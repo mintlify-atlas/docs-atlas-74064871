@@ -1,0 +1,360 @@
+---
+title: "AutoFilter"
+description: "Sort and filter rows in a worksheet range or table using ClosedXML's AutoFilter API."
+---
+
+AutoFilter lets you quickly sort and filter data in a range, either on a worksheet or in a table. The filter keeps a sort state (shown by an arrow in the sorted column header) and filter conditions (shown by a funnel icon).
+
+<Note>
+  There can be only one autofilter per worksheet. Each table can have its own
+  autofilter independent of the worksheet autofilter. Sorting through an
+  autofilter is limited to one column at a time.
+</Note>
+
+## Defining an autofilter
+
+Call `SetAutoFilter()` on an `IXLRange` to define and enable the autofilter on a worksheet range. For tables, call `SetAutoFilter()` on an `IXLTable`. The first row of the area is always the header row and is never included in sorting or filtering.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+var range = ws.Cell("B3").InsertData(new[]
+{
+    new object[] { "Pastry",    "Sold", "Margin" },
+    new object[] { "Cake",      14,     0.25 },
+    new object[] { "Croissant", 15,     0.60 },
+    new object[] { "Fig Roll",  56,     0.50 },
+    new object[] { "Waffle",    74,     0.60 },
+});
+
+IXLAutoFilter autoFilter = range.SetAutoFilter();
+wb.SaveAs("autofilter-example.xlsx");
+```
+
+<Note>
+  For tables, the autofilter range does not include the totals row — it is
+  excluded from filtering and sorting.
+</Note>
+
+### Enabling and disabling
+
+Use `IXLAutoFilter.IsEnabled` to show or hide the filter arrows without removing the filter configuration. Setting it to `false` hides the arrows and makes all rows visible.
+
+```csharp
+// Disable — arrows disappear, all rows become visible
+ws.AutoFilter.IsEnabled = false;
+
+// Re-enable
+ws.AutoFilter.IsEnabled = true;
+```
+
+You can also call `IXLRange.SetAutoFilter(false)` or `IXLAutoFilter.Clear()` to remove the autofilter entirely (arrows disappear, rows become visible, filter state is cleared).
+
+### Clearing and reapplying
+
+```csharp
+// Clear the filter on a single column (arrows remain, filter condition removed)
+ws.AutoFilter.Column(1).Clear();
+
+// Reapply all filters (re-evaluate visibility after data changes)
+ws.AutoFilter.Reapply();
+
+// Remove the entire autofilter from the worksheet
+ws.AutoFilter.Clear();
+```
+
+---
+
+## Sorting
+
+Sort the autofilter data rows with `IXLAutoFilter.Sort()`. After sorting, `Sorted`, `SortColumn`, and `SortOrder` properties are updated to reflect the sort state.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+var range = ws.Cell("B3").InsertData(new[]
+{
+    new object[] { "Pastry",    "Sold", "Margin" },
+    new object[] { "Cake",      14,     0.25 },
+    new object[] { "Croissant", 15,     0.60 },
+    new object[] { "Fig Roll",  56,     0.50 },
+    new object[] { "Waffle",    74,     0.60 },
+});
+
+// Sort by the third column (Margin) in descending order
+range.SetAutoFilter().Sort(3, XLSortOrder.Descending);
+wb.SaveAs("autofilter-sort-example.xlsx");
+```
+
+The sort state is stored in three properties:
+
+| Property | Description |
+|----------|-------------|
+| `IXLAutoFilter.Sorted` | `true` if `Sort()` has been called at least once |
+| `IXLAutoFilter.SortColumn` | Column number used for the last sort |
+| `IXLAutoFilter.SortOrder` | `XLSortOrder.Ascending` or `XLSortOrder.Descending` |
+
+---
+
+## Filtering
+
+Filter conditions are set per column. A row is visible only if it satisfies all active column filters. Entire worksheet rows are hidden — cells outside the autofilter range are hidden along with the data rows.
+
+Each column supports one filter type at a time. Setting a new filter type on a column replaces the previous one.
+
+All filter methods accept a `reapply` parameter (default `true`). Set it to `false` when configuring multiple filters to avoid redundant re-evaluations — then call `Reapply()` once at the end.
+
+### Regular filter
+
+A regular filter specifies a set of allowed values. A cell is visible if its formatted string matches any value in the set.
+
+<Warning>
+  Filter values are always compared as strings using the formatted cell text
+  (`IXLCell.GetFormattedString()`). This comparison is culture-sensitive, so
+  a workbook saved under one locale may behave differently when opened under
+  another.
+</Warning>
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+var range = ws.Cell("A1").InsertData(new object[]
+{
+    "Numbers",
+    2, 3, 3, 5, 1, 4, 5
+});
+
+ws.Cell("B1").SetValue("Names")
+    .CellBelow().SetValue("John")
+    .CellBelow().SetValue("Jack")
+    .CellBelow().SetValue("Neil")
+    .CellBelow().SetValue("Alex")
+    .CellBelow().SetValue("Jason")
+    .CellBelow().SetValue("Patrick")
+    .CellBelow().SetValue("Jacques");
+
+var autoFilter = ws.RangeUsed().SetAutoFilter();
+
+// Show rows where Numbers is 3 or 1
+autoFilter.Column(1).AddFilter(3, false).AddFilter(1);
+
+// Additionally, only show names beginning with "J"
+autoFilter.Column(2).BeginsWith("J");
+
+ws.AutoFilter.Sort(1);
+wb.SaveAs("autofilter-regular-example.xlsx");
+```
+
+#### Date group filter
+
+A date group filter matches all date-times within a specified date range (year, month, day, hour, minute, or second).
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+var range = ws.Cell("B3").InsertData(new object[]
+{
+    "Date",
+    new DateTime(2020, 1, 5),
+    new DateTime(2020, 1, 14),
+    new DateTime(2020, 2, 5),
+    new DateTime(2021, 1, 3),
+});
+
+range.SetAutoFilter().Column(1)
+    // Match all dates in January 2020
+    .AddDateGroupFilter(new DateTime(2020, 1, 1), XLDateTimeGrouping.Month);
+
+wb.SaveAs("autofilter-dategroup-example.xlsx");
+```
+
+---
+
+### Custom filter
+
+Custom filters compare a cell value with a filter value using a comparison operator.
+
+<AccordionGroup>
+  <Accordion title="Compare filters">
+    Comparison filters work on the type of the filter value. For example, `> 7` only matches cells that contain a number greater than 7.
+
+    - Blanks never satisfy a custom filter.
+    - Numbers (including DateTime and TimeSpan serial values) are compared numerically.
+    - Text is compared case-insensitively using the current culture.
+    - Errors are compared by their `ERROR.TYPE` value.
+
+    Available comparison methods on `IXLFilterColumn`:
+    - `EqualTo` / `NotEqualTo`
+    - `GreaterThan` / `EqualOrGreaterThan`
+    - `LessThan` / `EqualOrLessThan`
+    - `Between` / `NotBetween`
+
+    ```csharp
+    using var wb = new XLWorkbook();
+    var ws = wb.Worksheets.Add("AutoFilter");
+    var range = ws.Cell("A1").InsertData(new object[]
+    {
+        "Number",
+        2, 14, 4, 5, 8, -5,
+    });
+
+    var autoFilter = range.SetAutoFilter();
+    autoFilter.Column(1).EqualOrLessThan(5);
+
+    wb.SaveAs("autofilter-compare-example.xlsx");
+    ```
+
+    Custom filters support two conditions connected by `And` or `Or`:
+
+    ```csharp
+    using var wb = new XLWorkbook();
+    var ws = wb.Worksheets.Add("AutoFilter");
+    var gradesRange = ws.Cell("A1").InsertData(new[]
+    {
+        "Grade", "F", "C", "C", "N/A", "A", "D",
+    });
+
+    // Show grades above "C" but exclude "N/A"
+    // Pass reapply: false on first condition to defer re-evaluation
+    gradesRange.SetAutoFilter().Column(1).GreaterThan("C", false).And.NotEqualTo("N/A");
+
+    ws.AutoFilter.Sort(1, XLSortOrder.Ascending);
+    wb.SaveAs("autofilter-connector-example.xlsx");
+    ```
+  </Accordion>
+
+  <Accordion title="Pattern filters (wildcard text matching)">
+    When the `EqualTo` or `NotEqualTo` operator is used with a text value, it performs wildcard matching:
+
+    - `*` — matches zero or more characters
+    - `?` — matches exactly one character
+    - `~` — escape character (use `~*` to match a literal asterisk)
+
+    Convenience methods that map to Excel's text filter options:
+
+    | Method | Matches |
+    |--------|---------|
+    | `BeginsWith(s)` | Text starting with `s` |
+    | `NotBeginsWith(s)` | Text not starting with `s` |
+    | `EndsWith(s)` | Text ending with `s` |
+    | `NotEndsWith(s)` | Text not ending with `s` |
+    | `Contains(s)` | Text containing `s` |
+    | `NotContains(s)` | Text not containing `s` |
+
+    ```csharp
+    using var wb = new XLWorkbook();
+    var ws = wb.Worksheets.Add("AutoFilter");
+    var range = ws.Cell("A1").InsertData(new[]
+    {
+        "Code",
+        "CZ-144", "US-44", "FR-94", "CZ-84", "FR-98", "IN-94",
+    });
+
+    // Show only codes starting with "CZ"
+    range.SetAutoFilter().Column(1).BeginsWith("CZ");
+
+    wb.SaveAs("autofilter-pattern-example.xlsx");
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+### Dynamic filter
+
+Dynamic filters have values that change with the data. Currently supported dynamic filters are:
+
+- `AboveAverage()` — show rows with values above the column average
+- `BelowAverage()` — show rows with values below or equal to the column average
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.Worksheets.Add("AutoFilter");
+var range = ws.Cell("A1").InsertData(new object[]
+{
+    "Value",
+    1, 1, 1.7, 1.75, 1.8, 2, 3
+});
+
+// Average is 1.75; values strictly above it are shown
+range.SetAutoFilter().Column(1).AboveAverage();
+
+wb.SaveAs("autofilter-dynamic-example.xlsx");
+```
+
+When a column uses a dynamic filter, inspect its state through:
+- `IXLFilterColumn.FilterType == XLFilterType.Dynamic`
+- `IXLFilterColumn.DynamicType` (`XLFilterDynamicType.AboveAverage` or `BelowAverage`)
+- `IXLFilterColumn.DynamicValue` (the computed average at the time the filter was applied)
+
+---
+
+### Top 10 filter
+
+The top/bottom filter displays the top or bottom N items or percentage of data rows.
+
+<Note>
+  Duplicate values at the cutoff boundary are always retained. For example,
+  "bottom 2" of `1, 2, 2, 3` shows `1, 2, 2` — three rows, not two.
+</Note>
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.Worksheets.Add("AutoFilter");
+var range = ws.Cell("A1").InsertData(new object[]
+{
+    "Top 25%",
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+});
+
+// Show the top 25% of values
+range.SetAutoFilter().Column(1).Top(25, XLTopBottomType.Percent);
+
+wb.SaveAs("autofilter-top10-example.xlsx");
+```
+
+| Method | Description |
+|--------|-------------|
+| `Top(n)` | Show top N items |
+| `Top(n, XLTopBottomType.Percent)` | Show top N% of rows |
+| `Bottom(n)` | Show bottom N items |
+| `Bottom(n, XLTopBottomType.Percent)` | Show bottom N% of rows |
+
+Filter state is accessible via `TopBottomValue`, `TopBottomType`, and `TopBottomPart` when `FilterType == XLFilterType.TopBottom`.
+
+---
+
+## Multi-column filter example
+
+Filters from multiple columns are combined with AND logic — a row must satisfy all column conditions to be visible.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.Worksheets.Add("Multi Column");
+
+ws.Cell("A1").SetValue("First")
+    .CellBelow().SetValue("B").CellBelow().SetValue("C")
+    .CellBelow().SetValue("C").CellBelow().SetValue("E")
+    .CellBelow().SetValue("A").CellBelow().SetValue("D");
+
+ws.Cell("B1").SetValue("Numbers")
+    .CellBelow().SetValue(2).CellBelow().SetValue(3)
+    .CellBelow().SetValue(3).CellBelow().SetValue(5)
+    .CellBelow().SetValue(1).CellBelow().SetValue(4);
+
+// Filter column 2 (Numbers): show 3 or greater than 4
+ws.RangeUsed().SetAutoFilter().Column(2).EqualTo(3).Or.GreaterThan(4);
+
+// Sort by column 2
+ws.AutoFilter.Sort(2);
+wb.SaveAs("autofilter-multicolumn-example.xlsx");
+```
+
+---
+
+## Limitations
+
+- Only one autofilter per worksheet (tables each have their own).
+- Sorting through the autofilter is limited to one column. Use `IXLRange.Sort()` for multi-column sort.
+- ClosedXML does not support allow-edit ranges in conjunction with autofilter.
+- The OpenXML SDK reports a validation error when a regular filter value and a date group filter are combined on the same column. This does not affect ClosedXML unless `validate: true` is passed to `SaveAs()`.

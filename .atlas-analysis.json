@@ -1,23 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "ClosedXML",
+  "projectType": "sdk-library",
+  "projectName": "ClosedXML",
+  "projectDescription": "A .NET library for reading, manipulating, and writing Excel 2007+ (.xlsx, .xlsm) files with an intuitive, user-friendly API over OpenXML.",
   "theme": "palm",
-  "colors": {
-    "primary": "#94cb04",
-    "light": "#545454"
-  },
-  "favicon": "https://media.brand.dev/288cc7c4-5cef-4376-950b-bdf0083eedae.png",
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/ClosedXML/ClosedXML"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/ClosedXML/ClosedXML"
-    }
-  },
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
   "navigation": {
     "tabs": [
       {
@@ -100,5 +88,40 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Read, write, and manipulate Excel 2007+ .xlsx and .xlsm files without Excel installed",
+    "Intuitive fluent API for workbooks, worksheets, cells, and ranges",
+    "Full support for cell styles: fonts, borders, fills, number formats",
+    "Tables with sorting, filtering, totals rows, and structured references",
+    "Pivot tables with caching and data summarization",
+    "AutoFilter with custom filter conditions and sorting",
+    "Formula evaluation with 400+ supported Excel functions",
+    "Bulk data insertion from IEnumerable, DataTable, and other sources",
+    "Workbook and worksheet protection with password support",
+    "Conditional formatting, sparklines, charts, and drawings",
+    ".NET Standard 2.0 library — runs on .NET Core, .NET Framework, and Blazor"
+  ],
+  "publicApiSurface": [
+    "XLWorkbook",
+    "IXLWorkbook",
+    "IXLWorksheet",
+    "IXLCell",
+    "IXLRange",
+    "IXLRow",
+    "IXLColumn",
+    "IXLTable",
+    "IXLPivotTable",
+    "IXLPivotCache",
+    "IXLAutoFilter",
+    "IXLStyle",
+    "XLCellValue",
+    "IXLDefinedNames",
+    "IXLPageSetup",
+    "LoadOptions",
+    "SaveOptions",
+    "XLColor",
+    "XLBorderStyleValues",
+    "XLTableTheme"
+  ]
 }

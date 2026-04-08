@@ -1,0 +1,507 @@
+---
+title: "IXLStyle"
+description: "API reference for cell and range styling in ClosedXML — fonts, fills, borders, alignment, and number formats."
+---
+
+## Overview
+
+`IXLStyle` is the root style object for a cell or range. It groups five sub-objects — `Font`, `Fill`, `Border`, `Alignment`, and `NumberFormat` — plus a `Protection` sub-object. Each sub-object provides both direct property assignment and fluent `Set*` methods that return `IXLStyle` for chaining.
+
+## Accessing style
+
+```csharp
+// Cell style
+IXLStyle cellStyle = ws.Cell("A1").Style;
+
+// Range style (applied to all cells in the range)
+IXLStyle rangeStyle = ws.Range("A1:C10").Style;
+
+// Row / column style
+IXLStyle rowStyle = ws.Row(1).Style;
+IXLStyle colStyle = ws.Column("B").Style;
+```
+
+---
+
+## IXLStyle
+
+```csharp
+public interface IXLStyle
+{
+    IXLAlignment   Alignment   { get; set; }
+    IXLBorder      Border      { get; set; }
+    IXLFill        Fill        { get; set; }
+    IXLFont        Font        { get; set; }
+    IXLNumberFormat NumberFormat { get; set; }
+    IXLProtection  Protection  { get; set; }
+
+    /// Date-specific number format (shortcut).
+    IXLNumberFormat DateFormat  { get; }
+
+    /// When true, text cell values are prefixed with a quote character in the file.
+    Boolean IncludeQuotePrefix { get; set; }
+
+    IXLStyle SetIncludeQuotePrefix(Boolean includeQuotePrefix = true);
+}
+```
+
+### Fluent vs property API
+
+Both patterns produce identical results:
+
+```csharp
+// Property assignment
+cell.Style.Font.Bold = true;
+cell.Style.Font.FontColor = XLColor.Red;
+
+// Fluent chaining via Set methods
+cell.Style.Font
+    .SetBold()
+    .SetFontColor(XLColor.Red)
+    .SetFontSize(14);
+```
+
+---
+
+## IXLFont
+
+Inherits all read/write properties from `IXLFontBase`.
+
+### Properties (from IXLFontBase)
+
+| Property | Type | Description |
+|---|---|---|
+| `Bold` | `Boolean` | Bold weight. |
+| `Italic` | `Boolean` | Italic style. |
+| `Underline` | `XLFontUnderlineValues` | Underline style (`None`, `Single`, `Double`, `SingleAccounting`, `DoubleAccounting`). |
+| `Strikethrough` | `Boolean` | Strikethrough decoration. |
+| `VerticalAlignment` | `XLFontVerticalTextAlignmentValues` | `Baseline`, `Subscript`, or `Superscript`. |
+| `Shadow` | `Boolean` | Shadow effect. |
+| `FontSize` | `Double` | Size in points (1–409.55). |
+| `FontColor` | `XLColor` | Font foreground color. |
+| `FontName` | `String` | Font family name (e.g. `"Calibri"`). |
+| `FontFamilyNumbering` | `XLFontFamilyNumberingValues` | Font family category (`NotApplicable`, `Roman`, `Swiss`, `Modern`, `Script`, `Decorative`). |
+| `FontCharSet` | `XLFontCharSet` | Character set hint for font selection. |
+| `FontScheme` | `XLFontScheme` | Theme scheme membership (`None`, `Major`, `Minor`). |
+
+### Fluent setters (return `IXLStyle`)
+
+```csharp
+IXLStyle SetBold();
+IXLStyle SetBold(Boolean value);
+IXLStyle SetItalic();
+IXLStyle SetItalic(Boolean value);
+IXLStyle SetUnderline();
+IXLStyle SetUnderline(XLFontUnderlineValues value);
+IXLStyle SetStrikethrough();
+IXLStyle SetStrikethrough(Boolean value);
+IXLStyle SetFontSize(Double value);
+IXLStyle SetFontColor(XLColor value);
+IXLStyle SetFontName(String value);
+IXLStyle SetVerticalAlignment(XLFontVerticalTextAlignmentValues value);
+IXLStyle SetShadow();
+IXLStyle SetShadow(Boolean value);
+IXLStyle SetFontFamilyNumbering(XLFontFamilyNumberingValues value);
+IXLStyle SetFontCharSet(XLFontCharSet value);
+IXLStyle SetFontScheme(XLFontScheme value);
+```
+
+### Example
+
+```csharp
+cell.Style.Font
+    .SetBold()
+    .SetFontSize(14)
+    .SetFontName("Arial")
+    .SetFontColor(XLColor.DarkBlue);
+```
+
+---
+
+## IXLFill
+
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `BackgroundColor` | `XLColor` | Background (pattern foreground) color. Setting a non-transparent color to a `None`-type fill automatically switches it to `Solid`. |
+| `PatternColor` | `XLColor` | Secondary (pattern) color used with non-solid pattern types. |
+| `PatternType` | `XLFillPatternValues` | Fill pattern. For a plain background use `Solid`. |
+
+### Fluent setters (return `IXLStyle`)
+
+```csharp
+IXLStyle SetBackgroundColor(XLColor value);
+IXLStyle SetPatternColor(XLColor value);
+IXLStyle SetPatternType(XLFillPatternValues value);
+```
+
+### XLFillPatternValues (selected)
+
+| Value | Description |
+|---|---|
+| `None` | No fill (transparent). |
+| `Solid` | Solid color from `PatternColor`. |
+| `Gray125` | 12.5% gray pattern. |
+| `Gray0625` | 6.25% gray pattern. |
+| `LightGray` / `MediumGray` / `DarkGray` | Gray densities. |
+| `LightHorizontal` / `DarkHorizontal` | Horizontal line patterns. |
+| `LightVertical` / `DarkVertical` | Vertical line patterns. |
+| `LightDown` / `DarkDown` | Diagonal (down) patterns. |
+| `LightUp` / `DarkUp` | Diagonal (up) patterns. |
+| `LightGrid` / `DarkGrid` | Grid patterns. |
+| `LightTrellis` / `DarkTrellis` | Trellis patterns. |
+
+### Example
+
+```csharp
+// Yellow solid background
+cell.Style.Fill.BackgroundColor = XLColor.Yellow;
+
+// 12.5% gray pattern
+cell.Style.Fill.PatternType = XLFillPatternValues.Gray125;
+cell.Style.Fill.PatternColor = XLColor.Black;
+```
+
+---
+
+## IXLBorder
+
+### Individual edge properties
+
+Each edge has a style property and a color property. Set style before color — setting style to `None` resets the color.
+
+| Property | Type | Description |
+|---|---|---|
+| `TopBorder` | `XLBorderStyleValues` | Top edge style. |
+| `TopBorderColor` | `XLColor` | Top edge color. |
+| `RightBorder` | `XLBorderStyleValues` | Right edge style. |
+| `RightBorderColor` | `XLColor` | Right edge color. |
+| `BottomBorder` | `XLBorderStyleValues` | Bottom edge style. |
+| `BottomBorderColor` | `XLColor` | Bottom edge color. |
+| `LeftBorder` | `XLBorderStyleValues` | Left edge style. |
+| `LeftBorderColor` | `XLColor` | Left edge color. |
+| `DiagonalBorder` | `XLBorderStyleValues` | Diagonal line style. |
+| `DiagonalBorderColor` | `XLColor` | Diagonal line color. |
+| `DiagonalUp` | `Boolean` | Draw diagonal from bottom-left to top-right. |
+| `DiagonalDown` | `Boolean` | Draw diagonal from top-left to bottom-right. |
+
+### Shortcut setters (write-only, set all edges at once)
+
+```csharp
+XLBorderStyleValues OutsideBorder { set; }
+XLColor OutsideBorderColor { set; }
+XLBorderStyleValues InsideBorder { set; }
+XLColor InsideBorderColor { set; }
+```
+
+### Fluent setters (return `IXLStyle`)
+
+```csharp
+IXLStyle SetTopBorder(XLBorderStyleValues value);
+IXLStyle SetTopBorderColor(XLColor value);
+IXLStyle SetRightBorder(XLBorderStyleValues value);
+IXLStyle SetRightBorderColor(XLColor value);
+IXLStyle SetBottomBorder(XLBorderStyleValues value);
+IXLStyle SetBottomBorderColor(XLColor value);
+IXLStyle SetLeftBorder(XLBorderStyleValues value);
+IXLStyle SetLeftBorderColor(XLColor value);
+IXLStyle SetDiagonalBorder(XLBorderStyleValues value);
+IXLStyle SetDiagonalBorderColor(XLColor value);
+IXLStyle SetDiagonalUp();
+IXLStyle SetDiagonalUp(Boolean value);
+IXLStyle SetDiagonalDown();
+IXLStyle SetDiagonalDown(Boolean value);
+IXLStyle SetOutsideBorder(XLBorderStyleValues value);
+IXLStyle SetOutsideBorderColor(XLColor value);
+IXLStyle SetInsideBorder(XLBorderStyleValues value);
+IXLStyle SetInsideBorderColor(XLColor value);
+```
+
+### XLBorderStyleValues
+
+| Value | Description |
+|---|---|
+| `None` | No border. |
+| `Thin` | Thin solid line. |
+| `Medium` | Medium solid line. |
+| `Thick` | Thick solid line. |
+| `Dashed` | Dashed line. |
+| `Dotted` | Dotted line. |
+| `Double` | Double line. |
+| `Hair` | Hairline (thinnest possible). |
+| `DashDot` | Dash-dot pattern. |
+| `DashDotDot` | Dash-dot-dot pattern. |
+| `MediumDashed` | Medium dashed line. |
+| `MediumDashDot` | Medium dash-dot pattern. |
+| `MediumDashDotDot` | Medium dash-dot-dot pattern. |
+| `SlantDashDot` | Slanted dash-dot pattern. |
+
+### Example
+
+```csharp
+// Thin black box around a cell
+cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+cell.Style.Border.OutsideBorderColor = XLColor.Black;
+
+// Thick red bottom border
+cell.Style.Border
+    .SetBottomBorder(XLBorderStyleValues.Thick)
+    .SetBottomBorderColor(XLColor.Red);
+```
+
+---
+
+## IXLAlignment
+
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `Horizontal` | `XLAlignmentHorizontalValues` | Horizontal text alignment. |
+| `Vertical` | `XLAlignmentVerticalValues` | Vertical text alignment. |
+| `WrapText` | `Boolean` | Wrap long text to multiple lines. |
+| `Indent` | `Int32` | Text indent (0–255). Width = `indent * 3 * space_width`. |
+| `TextRotation` | `Int32` | Rotation in degrees (−90 to 90) or 255 for top-to-bottom. |
+| `TopToBottom` | `Boolean` | Display text vertically top-to-bottom (equivalent to `TextRotation = 255`). |
+| `ShrinkToFit` | `Boolean` | Shrink font size to fit cell width. Ignored when `WrapText` is on. |
+| `JustifyLastLine` | `Boolean` | Affects `Distributed` alignment — distributes the last line. |
+| `ReadingOrder` | `XLAlignmentReadingOrderValues` | `ContextDependent`, `LeftToRight`, or `RightToLeft`. |
+| `RelativeIndent` | `Int32` | Additional indent in differential formatting. |
+
+### Fluent setters (return `IXLStyle`)
+
+```csharp
+IXLStyle SetHorizontal(XLAlignmentHorizontalValues value);
+IXLStyle SetVertical(XLAlignmentVerticalValues value);
+IXLStyle SetWrapText();
+IXLStyle SetWrapText(Boolean value);
+IXLStyle SetIndent(Int32 value);
+IXLStyle SetTextRotation(Int32 value);
+IXLStyle SetTopToBottom();
+IXLStyle SetTopToBottom(Boolean value);
+IXLStyle SetShrinkToFit();
+IXLStyle SetShrinkToFit(Boolean value);
+IXLStyle SetJustifyLastLine();
+IXLStyle SetJustifyLastLine(Boolean value);
+IXLStyle SetReadingOrder(XLAlignmentReadingOrderValues value);
+IXLStyle SetRelativeIndent(Int32 value);
+```
+
+### XLAlignmentHorizontalValues
+
+| Value | Description |
+|---|---|
+| `General` | Default — numbers right-align, text left-aligns. |
+| `Left` | Left-aligned. |
+| `Center` | Centered. |
+| `Right` | Right-aligned. |
+| `Fill` | Repeats content to fill cell width. |
+| `Justify` | Justifies wrapped lines (not the last line). |
+| `CenterContinuous` | Centers across adjacent empty cells. |
+| `Distributed` | Distributes characters evenly; see `JustifyLastLine`. |
+
+### XLAlignmentVerticalValues
+
+| Value | Description |
+|---|---|
+| `Top` | Top-aligned. |
+| `Center` | Vertically centered. |
+| `Bottom` | Bottom-aligned (default). |
+| `Justify` | Justified vertically. |
+| `Distributed` | Distributed vertically. |
+
+### Example
+
+```csharp
+cell.Style.Alignment
+    .SetHorizontal(XLAlignmentHorizontalValues.Center)
+    .SetVertical(XLAlignmentVerticalValues.Center)
+    .SetWrapText(true)
+    .SetTextRotation(45);
+```
+
+---
+
+## IXLNumberFormat
+
+Inherits `NumberFormatId` and `Format` from `IXLNumberFormatBase`.
+
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `NumberFormatId` | `int` | ID of a predefined format. Use `XLPredefinedFormat` members cast to `int`. If the format is custom, the getter returns an implementation-defined value. |
+| `Format` | `string` | Custom format string (e.g. `"#,##0.00"`). Setting this takes precedence over `NumberFormatId`. |
+
+### Fluent setters (return `IXLStyle`)
+
+```csharp
+IXLStyle SetNumberFormatId(int value);
+IXLStyle SetFormat(string value);
+```
+
+**Throws** `ArgumentOutOfRangeException` from `SetNumberFormatId` if the ID is not a recognised predefined format.
+
+### XLPredefinedFormat
+
+Static class with nested enums for common formats. Cast enum members to `int` to use as `NumberFormatId`.
+
+**`XLPredefinedFormat.Number`**
+
+| Member | ID | Format string |
+|---|---|---|
+| `General` | 0 | General |
+| `Integer` | 1 | `0` |
+| `Precision2` | 2 | `0.00` |
+| `IntegerWithSeparator` | 3 | `#,##0` |
+| `Precision2WithSeparator` | 4 | `#,##0.00` |
+| `PercentInteger` | 9 | `0%` |
+| `PercentPrecision2` | 10 | `0.00%` |
+| `ScientificPrecision2` | 11 | `0.00E+00` |
+| `FractionPrecision1` | 12 | `# ?/?` |
+| `FractionPrecision2` | 13 | `# ??/??` |
+| `Text` | 49 | `@` |
+
+**`XLPredefinedFormat.DateTime`**
+
+| Member | ID | Format string |
+|---|---|---|
+| `DayMonthYear4WithSlashes` | 14 | `M/d/yyyy` |
+| `DayMonthAbbrYear2WithDashes` | 15 | `d-MMM-yy` |
+| `Hour24Minutes` | 20 | `H:mm` |
+| `Hour24MinutesSeconds` | 21 | `H:mm:ss` |
+| `MonthDayYear4WithDashesHour24Minutes` | 22 | `M/d/yyyy H:mm` |
+
+### Example
+
+```csharp
+// Predefined format
+cell.Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.Precision2;
+
+// Custom format
+cell.Style.NumberFormat.Format = "€#,##0.00;[Red]-€#,##0.00";
+
+// Fluent
+cell.Style.NumberFormat.SetFormat("#,##0");
+```
+
+---
+
+## XLColor
+
+`XLColor` is an immutable class representing a color. There are three color types (`XLColorType`): `Color` (ARGB), `Theme`, or `Indexed`.
+
+### Static factory methods
+
+```csharp
+// From ARGB integer
+XLColor.FromArgb(Int32 argb);
+XLColor.FromArgb(Int32 r, Int32 g, Int32 b);
+XLColor.FromArgb(Int32 a, Int32 r, Int32 g, Int32 b);
+
+// From System.Drawing.Color
+XLColor.FromColor(Color color);
+
+// From HTML hex string (#RRGGBB or #AARRGGBB)
+XLColor.FromHtml(String htmlColor);
+
+// From named .NET color
+XLColor.FromName(String name);
+
+// From Excel indexed palette (0–64)
+XLColor.FromIndex(Int32 index);
+
+// From theme color
+XLColor.FromTheme(XLThemeColor themeColor);
+XLColor.FromTheme(XLThemeColor themeColor, Double themeTint);
+```
+
+### Theme colors (XLThemeColor)
+
+| Value | Typical use |
+|---|---|
+| `Background1` | Primary background. |
+| `Text1` | Primary text. |
+| `Background2` | Secondary background. |
+| `Text2` | Secondary text. |
+| `Accent1`–`Accent6` | Accent colors 1–6. |
+| `Hyperlink` | Hyperlink color. |
+| `FollowedHyperlink` | Visited hyperlink color. |
+
+### Named color constants
+
+`XLColor` exposes all .NET `System.Drawing.Color` named colors as static properties, e.g.:
+
+```csharp
+XLColor.Red
+XLColor.Blue
+XLColor.White
+XLColor.Black
+XLColor.Yellow
+XLColor.Green
+XLColor.Gray
+// ... and many more
+```
+
+Plus extended named colors such as `XLColor.AirForceBlue`, `XLColor.Cobalt`, `XLColor.Emerald`, etc.
+
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `ColorType` | `XLColorType` | `Color`, `Theme`, or `Indexed`. |
+| `Color` | `System.Drawing.Color` | ARGB color. Throws for `Theme`-type colors. |
+| `ThemeColor` | `XLThemeColor` | Theme color enum value. Only valid when `ColorType == Theme`. |
+| `ThemeTint` | `Double` | Tint/shade applied to theme color. |
+| `Indexed` | `Int32` | Index into Excel's color palette. Only valid when `ColorType == Indexed`. |
+| `HasValue` | `Boolean` | `false` for the automatic/transparent color (`XLColor.NoColor`). |
+
+### Example
+
+```csharp
+cell.Style.Font.FontColor = XLColor.FromArgb(255, 0, 0);          // pure red
+cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#4472C4");     // Excel blue
+cell.Style.Font.FontColor = XLColor.FromTheme(XLThemeColor.Accent1);
+cell.Style.Border.TopBorderColor = XLColor.Black;
+```
+
+---
+
+## Full example
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Header row
+var headerRange = ws.Range("A1:D1");
+headerRange.Style.Font
+    .SetBold()
+    .SetFontSize(12)
+    .SetFontColor(XLColor.White);
+headerRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#4472C4");
+headerRange.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+// Data cells
+var dataRange = ws.Range("A2:D10");
+dataRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+dataRange.Style.Border.InsideBorder  = XLBorderStyleValues.Hair;
+
+// Currency column
+ws.Column("C").Style.NumberFormat.Format = "$#,##0.00";
+
+// Percentage column
+ws.Column("D").Style.NumberFormat.NumberFormatId =
+    (int)XLPredefinedFormat.Number.PercentPrecision2;
+
+// Wrap and rotate text in a specific cell
+ws.Cell("E1").Style.Alignment
+    .SetWrapText(true)
+    .SetTextRotation(45)
+    .SetVertical(XLAlignmentVerticalValues.Bottom);
+
+wb.SaveAs("styles.xlsx");
+```

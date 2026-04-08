@@ -1,80 +1,193 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Create your first Excel workbook with ClosedXML in minutes — add data, apply styles, and save the file."
 ---
 
-## Get started in three steps
+## Create a workbook
 
-Get your documentation site running locally and make your first customization.
+This guide walks you through installing ClosedXML, creating a workbook with data and styles, saving it, and then loading an existing file to read values back.
 
-### Step 1: Set up your local environment
+<Steps>
+  <Step title="Install the package">
+    Add ClosedXML to your project using the .NET CLI:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```bash
+    dotnet add package ClosedXML
+    ```
 
-### Step 2: Deploy your changes
+    Or via the Package Manager Console:
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```powershell
+    Install-Package ClosedXML
+    ```
+  </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Step title="Create a workbook and add a worksheet">
+    Instantiate `XLWorkbook` and add a named worksheet. The workbook is created in memory — nothing is written to disk yet.
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```csharp
+    using ClosedXML.Excel;
 
-### Step 3: Go live
+    var workbook = new XLWorkbook();
+    var ws = workbook.Worksheets.Add("Contacts");
+    ```
+  </Step>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+  <Step title="Add data to cells">
+    Set values on individual cells using A1-style addresses or row/column indices. ClosedXML accepts strings, numbers, booleans, `DateTime`, and `TimeSpan` values directly.
+
+    ```csharp
+    // Header row
+    ws.Cell("B3").Value = "FName";
+    ws.Cell("C3").Value = "LName";
+    ws.Cell("D3").Value = "Outcast";
+    ws.Cell("E3").Value = "DOB";
+    ws.Cell("F3").Value = "Income";
+
+    // Data rows
+    ws.Cell("B4").Value = "John";   ws.Cell("C4").Value = "Galt";
+    ws.Cell("B5").Value = "Hank";   ws.Cell("C5").Value = "Rearden";
+    ws.Cell("B6").Value = "Dagny";  ws.Cell("C6").Value = "Taggart";
+
+    ws.Cell("D4").Value = true;
+    ws.Cell("D5").Value = false;
+    ws.Cell("D6").Value = false;
+
+    ws.Cell("E4").Value = new DateTime(1919, 1, 21);
+    ws.Cell("E5").Value = new DateTime(1907, 3, 4);
+    ws.Cell("E6").Value = new DateTime(1921, 12, 15);
+
+    ws.Cell("F4").Value = 2000;
+    ws.Cell("F5").Value = 40000;
+    ws.Cell("F6").Value = 10000;
+    ```
+  </Step>
+
+  <Step title="Apply styles">
+    Use `IXLRange` to style groups of cells at once. You can set fonts, fills, borders, alignment, and number formats.
+
+    ```csharp
+    // Define the table range
+    var rngTable = ws.Range("B3:F6");
+
+    // Style the header row
+    var rngHeaders = rngTable.Range("B3:F3");
+    rngHeaders.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+    rngHeaders.Style.Font.Bold = true;
+    rngHeaders.Style.Fill.BackgroundColor = XLColor.Aqua;
+
+    // Format dates using a predefined number format (format ID 15 = d-mmm-yy)
+    var rngDates = ws.Range("E4:E6");
+    rngDates.Style.NumberFormat.NumberFormatId = 15;
+
+    // Format numbers with a custom format string
+    var rngNumbers = ws.Range("F4:F6");
+    rngNumbers.Style.NumberFormat.Format = "$ #,##0";
+
+    // Add a thin bottom border to every cell in the table
+    rngTable.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
+
+    // Add a thick outside border around the entire table
+    rngTable.Style.Border.OutsideBorder = XLBorderStyleValues.Thick;
+
+    // Auto-fit column widths to their content
+    ws.Columns(2, 6).AdjustToContents();
+    ```
+  </Step>
+
+  <Step title="Save the workbook">
+    Save to a file path or write to a `Stream`. The file extension determines the format (`.xlsx` or `.xlsm`).
+
+    <CodeGroup>
+      ```csharp Save to file path
+      workbook.SaveAs("Contacts.xlsx");
+      ```
+
+      ```csharp Save to a Stream
+      using var stream = new MemoryStream();
+      workbook.SaveAs(stream);
+
+      // stream now contains the .xlsx bytes — send it as an HTTP response,
+      // write it to blob storage, etc.
+      stream.Position = 0;
+      ```
+    </CodeGroup>
+
+    <Tip>
+      `SaveAs` creates any missing parent directories automatically when saving to a file path.
+    </Tip>
+  </Step>
+</Steps>
+
+## Load an existing file and read data
+
+Use the `XLWorkbook(string path)` constructor to open an existing `.xlsx` or `.xlsm` file. You can also open from a `Stream` with `XLWorkbook(Stream stream)`.
+
+```csharp
+using ClosedXML.Excel;
+
+// Open from a file path
+var workbook = new XLWorkbook("Contacts.xlsx");
+var ws = workbook.Worksheet(1); // access by 1-based index
+
+// Read a cell value as a specific type
+string firstName = ws.Cell("B4").GetValue<string>();
+double income    = ws.Cell("F4").GetValue<double>();
+
+Console.WriteLine($"{firstName} earns {income:C}");
+// Output: John earns $2,000.00
+```
+
+To iterate over all used rows in a worksheet:
+
+```csharp
+var ws = workbook.Worksheet("Contacts");
+
+// Skip the header row (row 3) and iterate data rows
+foreach (var row in ws.RangeUsed().RowsUsed().Skip(1))
+{
+    string fname  = row.Cell(1).GetValue<string>();
+    string lname  = row.Cell(2).GetValue<string>();
+    double income = row.Cell(5).GetValue<double>();
+    Console.WriteLine($"{fname} {lname}: {income:C}");
+}
+```
+
+## Modify and re-save a file
+
+Load an existing workbook, make changes, then call `SaveAs` to write to a new path (or back to the same path to overwrite):
+
+```csharp
+using ClosedXML.Excel;
+
+var workbook = new XLWorkbook("Contacts.xlsx");
+var ws = workbook.Worksheet(1);
+
+// Change header background color
+ws.Range("B3:F3").Style.Fill.BackgroundColor = XLColor.LightSalmon;
+
+// Update date format
+ws.Range("E4:E6").Style.DateFormat.Format = "MM/dd/yyyy";
+
+// Auto-fit columns after changes
+ws.Columns().AdjustToContents();
+
+workbook.SaveAs("Contacts_Modified.xlsx");
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Cell styles" icon="paintbrush" href="/features/cell-styles">
+    Apply fonts, colors, borders, fills, and number formats.
+  </Card>
+  <Card title="Tables" icon="table" href="/features/tables">
+    Create structured tables with filtering and totals rows.
+  </Card>
+  <Card title="Formulas" icon="square-root-variable" href="/features/formulas">
+    Write Excel formulas and evaluate them server-side.
+  </Card>
+  <Card title="Bulk data insert" icon="file-import" href="/features/bulk-insert-data">
+    Populate worksheets from collections and DataTable.
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

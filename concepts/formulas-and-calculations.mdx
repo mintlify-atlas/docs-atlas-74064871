@@ -1,0 +1,358 @@
+---
+title: "Formulas and Calculations"
+description: "Learn how to set formulas on cells, understand Excel's formula types, and control how ClosedXML evaluates them."
+---
+
+## Formula types in Excel
+
+Excel supports several distinct formula types. Each is stored differently in the `.xlsx` format and has different behavior for which cells it affects.
+
+| Formula type | Affects | Description |
+|---|---|---|
+| **Normal** | Single cell | Standard `=SUM(A1:A10)` formula on one cell. If the result is an array, only the top-left element is used. |
+| **Array** | Range of cells | A single formula entered with Ctrl+Shift+Enter that fills a 2D range. ClosedXML uses `FormulaReference` to define the range. |
+| **Data table** | Range of cells | An Excel data table (What-If Analysis) formula. Read from files but not modifiable in ClosedXML. |
+| **Shared** | Multiple cells | A formula shared across adjacent cells to reduce file size. ClosedXML reads shared formulas but writes them as individual cell formulas. |
+
+<Note>
+  ClosedXML's formula engine evaluates all types the same way. The distinction only affects how results are projected back into cells.
+</Note>
+
+---
+
+## Setting formulas on cells
+
+### FormulaA1
+
+Use `IXLCell.FormulaA1` to set or get a formula using standard A1-style references. This is the most common way to assign a formula.
+
+```csharp
+using ClosedXML.Excel;
+
+using var workbook = new XLWorkbook();
+var ws = workbook.AddWorksheet("Calculations");
+
+// Set a simple SUM formula
+ws.Cell("A1").Value = 10;
+ws.Cell("A2").Value = 20;
+ws.Cell("A3").Value = 30;
+
+ws.Cell("A4").FormulaA1 = "SUM(A1:A3)";
+
+// Access the evaluated result
+double total = ws.Cell("A4").Value.GetNumber();
+Console.WriteLine(total);  // 60
+
+// Read back the formula string
+Console.WriteLine(ws.Cell("A4").FormulaA1);  // SUM(A1:A3)
+
+workbook.SaveAs("formulas.xlsx");
+```
+
+<Tip>
+  You can include or omit the leading `=`. ClosedXML normalizes both `"SUM(A1:A3)"` and `"=SUM(A1:A3)"` to the same stored formula.
+</Tip>
+
+### FormulaR1C1
+
+Use `IXLCell.FormulaR1C1` for R1C1-style references, where rows and columns are numbers rather than letters. R1C1 is especially useful when writing the same relative formula pattern to many cells programmatically.
+
+```csharp
+using var workbook = new XLWorkbook();
+var ws = workbook.AddWorksheet("R1C1");
+
+// R1C1: "R[-3]C" means "3 rows up, same column"
+ws.Cell("B4").FormulaR1C1 = "SUM(R[-3]C:R[-1]C)";
+
+// Equivalent A1 formula when the formula is in B4:
+// =SUM(B1:B3)
+
+Console.WriteLine(ws.Cell("B4").FormulaA1);  // SUM(B1:B3)
+```
+
+### SetFormulaA1 / SetFormulaR1C1 (fluent API)
+
+Both properties have fluent equivalents that return `IXLCell`, enabling method chaining:
+
+```csharp
+using var workbook = new XLWorkbook();
+var ws = workbook.AddWorksheet("Fluent");
+
+ws.Cell("C1").SetFormulaA1("AVERAGE(A1:B1)")
+             .Style.NumberFormat.SetFormat("0.00");
+```
+
+---
+
+## Array formulas
+
+An array formula operates on a range of cells with a single formula. The formula is entered on one cell and `FormulaReference` defines the full range it covers.
+
+```csharp
+using var workbook = new XLWorkbook();
+var ws = workbook.AddWorksheet("Arrays");
+
+// Populate source data
+for (int i = 1; i <= 5; i++)
+{
+    ws.Cell(i, 1).Value = i;       // A1:A5 = 1,2,3,4,5
+    ws.Cell(i, 2).Value = i * 2;   // B1:B5 = 2,4,6,8,10
+}
+
+// Set an array formula on C1:C5 that multiplies A*B element-wise
+var anchorCell = ws.Cell("C1");
+anchorCell.FormulaA1 = "A1:A5*B1:B5";
+anchorCell.FormulaReference = ws.Range("C1:C5").RangeAddress;
+
+// Each cell C1:C5 receives its corresponding product
+// C1=2, C2=8, C3=18, C4=32, C5=50
+workbook.RecalculateAllFormulas();
+
+for (int i = 1; i <= 5; i++)
+    Console.WriteLine(ws.Cell(i, 3).CachedValue);
+
+workbook.SaveAs("array-formulas.xlsx");
+```
+
+Check whether a cell is part of an array formula:
+
+```csharp
+bool isArray = ws.Cell("C3").HasArrayFormula;
+IXLRangeAddress range = ws.Cell("C1").FormulaReference;  // C1:C5
+```
+
+---
+
+## Formula evaluation
+
+### How ClosedXML evaluates formulas
+
+ClosedXML has a built-in formula engine. When you access `IXLCell.Value` on a cell with a dirty formula, the engine recalculates that cell (and any cells it depends on) on demand.
+
+The engine uses a **calculation chain** to order evaluations. Cells are evaluated in dependency order: if `B1` depends on `A1`, `A1` is calculated first. The chain is automatically maintained and updated as cells change.
+
+```csharp
+using var workbook = new XLWorkbook();
+var ws = workbook.AddWorksheet("Chain");
+
+ws.Cell("A1").Value = 5;
+ws.Cell("B1").FormulaA1 = "A1 * 2";      // depends on A1
+ws.Cell("C1").FormulaA1 = "B1 + 10";     // depends on B1
+
+// Accessing C1.Value evaluates B1 first, then C1
+double result = ws.Cell("C1").Value.GetNumber();
+Console.WriteLine(result);  // 20
+```
+
+### RecalculateAllFormulas
+
+Force recalculation of every formula in the workbook or a single worksheet, regardless of dirty state. Use this before saving when you want all cached values to be current.
+
+```csharp
+using var workbook = new XLWorkbook("data.xlsx");
+
+// Modify source data
+workbook.Worksheet("Input").Cell("B3").Value = 999;
+
+// Recalculate every formula in the workbook
+workbook.RecalculateAllFormulas();
+
+// Or recalculate only one sheet (leaves other sheets unchanged)
+workbook.Worksheet("Summary").RecalculateAllFormulas();
+
+workbook.Save();
+```
+
+### EvaluateFormulasBeforeSaving
+
+When saving, you can instruct ClosedXML to evaluate all dirty formulas so the saved file contains up-to-date cached values. This way, Excel users who open the file see the correct values even with `CalculateMode` set to `Manual`.
+
+```csharp
+using var workbook = new XLWorkbook();
+var ws = workbook.AddWorksheet("Report");
+
+ws.Cell("A1").Value = 100;
+ws.Cell("A2").FormulaA1 = "A1 * 1.2";
+
+var options = new SaveOptions { EvaluateFormulasBeforeSaving = true };
+workbook.SaveAs("report.xlsx", options);
+```
+
+### Value vs CachedValue
+
+| Property | Triggers evaluation | Performance |
+|---|---|---|
+| `IXLCell.Value` | Yes, if `NeedsRecalculation` is `true` | Slower per-cell |
+| `IXLCell.CachedValue` | Never | Fast |
+
+```csharp
+// Efficient pattern: recalculate once, then read cached values
+workbook.RecalculateAllFormulas();
+
+foreach (IXLRow row in ws.RowsUsed())
+{
+    // CachedValue is safe here because we recalculated above
+    XLCellValue val = row.Cell(3).CachedValue;
+    Console.WriteLine(val);
+}
+```
+
+---
+
+## Calculation modes
+
+`XLCalculateMode` is stored in the workbook file and tells Excel how to handle recalculation when the user opens the file. It does not affect ClosedXML's own evaluation engine.
+
+```csharp
+using var workbook = new XLWorkbook();
+
+workbook.CalculateMode = XLCalculateMode.Auto;          // Default: Excel recalculates on change
+workbook.CalculateMode = XLCalculateMode.AutoNoTable;   // Auto, but excludes data tables
+workbook.CalculateMode = XLCalculateMode.Manual;        // User must press F9 in Excel
+workbook.CalculateMode = XLCalculateMode.Default;       // Use Excel's application setting
+```
+
+Additional recalculation flags:
+
+```csharp
+// Force a full recalculation when Excel opens the file
+workbook.ForceFullCalculation = true;
+
+// Recalculate when the file is saved in Excel
+workbook.CalculationOnSave = true;
+
+// Recalculate all formulas on load in Excel
+workbook.FullCalculationOnLoad = true;
+```
+
+---
+
+## Evaluating ad-hoc expressions
+
+You can evaluate a formula expression without placing it in a cell using `IXLWorkbook.Evaluate` or `IXLWorksheet.Evaluate`:
+
+```csharp
+using var workbook = new XLWorkbook();
+var ws = workbook.AddWorksheet("Data");
+ws.Cell("A1").Value = 10;
+ws.Cell("A2").Value = 20;
+ws.Cell("A3").Value = 30;
+
+// Evaluate a workbook-level expression
+XLCellValue result = workbook.Evaluate("SUM(Data!A1:Data!A3)");
+Console.WriteLine(result.GetNumber());  // 60
+
+// Evaluate with worksheet context (for functions that need a cell address)
+XLCellValue wsResult = ws.Evaluate("SUM(A1:A3)", "A4");
+Console.WriteLine(wsResult.GetNumber());  // 60
+```
+
+---
+
+## Dirty tracking
+
+ClosedXML automatically marks formulas as **dirty** (needing recalculation) when:
+
+- A cell the formula depends on changes its value.
+- A worksheet is added or removed (affecting cross-sheet references).
+- A defined name is added or removed.
+
+You can check and manipulate the dirty state explicitly:
+
+```csharp
+IXLCell formulaCell = ws.Cell("D1");
+
+// Check if the formula needs to be recalculated
+bool dirty = formulaCell.NeedsRecalculation;
+
+// Manually mark a formula as dirty
+formulaCell.InvalidateFormula();
+```
+
+Dirty tracking uses an **r-tree** to efficiently find all formulas that overlap with a changed area. When a range of cells changes, only the formulas whose dependency areas intersect with the changed range are marked dirty. This propagates transitively — if `A1` changes and `B1 = A1 * 2` becomes dirty, any cell depending on `B1` is also marked dirty.
+
+<Warning>
+  ClosedXML throws `InvalidOperationException` if it detects a cyclic formula dependency during evaluation (for example, `A1 = B1` and `B1 = A1`). Design your spreadsheet to avoid circular references.
+</Warning>
+
+---
+
+## Supported functions
+
+ClosedXML's built-in formula engine supports 400+ Excel functions across all major categories:
+
+<AccordionGroup>
+  <Accordion title="Math and trigonometry">
+    `ABS`, `ACOS`, `ACOSH`, `ASIN`, `ASINH`, `ATAN`, `ATAN2`, `ATANH`, `CEILING`, `COMBIN`, `COS`, `COSH`, `DEGREES`, `EVEN`, `EXP`, `FACT`, `FLOOR`, `GCD`, `INT`, `LCM`, `LN`, `LOG`, `LOG10`, `MOD`, `MROUND`, `MULTINOMIAL`, `ODD`, `PI`, `POWER`, `PRODUCT`, `QUOTIENT`, `RADIANS`, `RAND`, `RANDBETWEEN`, `ROMAN`, `ROUND`, `ROUNDDOWN`, `ROUNDUP`, `SIGN`, `SIN`, `SINH`, `SQRT`, `SQRTPI`, `SUBTOTAL`, `SUM`, `SUMIF`, `SUMIFS`, `SUMPRODUCT`, `SUMSQ`, `TAN`, `TANH`, `TRUNC`, and more.
+  </Accordion>
+  <Accordion title="Statistical">
+    `AVERAGE`, `AVERAGEA`, `AVERAGEIF`, `AVERAGEIFS`, `COUNT`, `COUNTA`, `COUNTBLANK`, `COUNTIF`, `COUNTIFS`, `LARGE`, `MAX`, `MAXA`, `MEDIAN`, `MIN`, `MINA`, `MODE`, `PERCENTILE`, `PERCENTRANK`, `RANK`, `SMALL`, `STDEV`, `STDEVP`, `VAR`, `VARP`, and more.
+  </Accordion>
+  <Accordion title="Text">
+    `CHAR`, `CLEAN`, `CODE`, `CONCATENATE`, `CONCAT`, `EXACT`, `FIND`, `FIXED`, `LEFT`, `LEN`, `LOWER`, `MID`, `PROPER`, `REPLACE`, `REPT`, `RIGHT`, `SEARCH`, `SUBSTITUTE`, `TEXT`, `TEXTJOIN`, `TRIM`, `UNICHAR`, `UNICODE`, `UPPER`, `VALUE`, and more.
+  </Accordion>
+  <Accordion title="Date and time">
+    `DATE`, `DATEDIF`, `DATEVALUE`, `DAY`, `DAYS`, `DAYS360`, `EDATE`, `EOMONTH`, `HOUR`, `ISOWEEKNUM`, `MINUTE`, `MONTH`, `NETWORKDAYS`, `NETWORKDAYS.INTL`, `NOW`, `SECOND`, `TIME`, `TIMEVALUE`, `TODAY`, `WEEKDAY`, `WEEKNUM`, `WORKDAY`, `WORKDAY.INTL`, `YEAR`, `YEARFRAC`, and more.
+  </Accordion>
+  <Accordion title="Lookup and reference">
+    `ADDRESS`, `CHOOSE`, `COLUMN`, `COLUMNS`, `HLOOKUP`, `IF`, `IFS`, `INDEX`, `INDIRECT`, `LOOKUP`, `MATCH`, `OFFSET`, `ROW`, `ROWS`, `TRANSPOSE`, `VLOOKUP`, `XLOOKUP`, and more.
+  </Accordion>
+  <Accordion title="Logical">
+    `AND`, `FALSE`, `IFERROR`, `IFNA`, `NOT`, `OR`, `SWITCH`, `TRUE`, `XOR`.
+  </Accordion>
+  <Accordion title="Information">
+    `CELL`, `ERROR.TYPE`, `INFO`, `ISBLANK`, `ISERR`, `ISERROR`, `ISEVEN`, `ISLOGICAL`, `ISNA`, `ISNONTEXT`, `ISNUMBER`, `ISODD`, `ISREF`, `ISTEXT`, `N`, `NA`, `TYPE`.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  If a function is not implemented, `IXLCell.Value` returns `XLError.NameNotRecognized` (`#NAME?`) and `TryGetValue<T>` returns `false`. You can use `CachedValue` to read whatever value was saved in the file by the application that last wrote it.
+</Note>
+
+---
+
+## Practical example: building a summary sheet
+
+```csharp
+using ClosedXML.Excel;
+
+using var workbook = new XLWorkbook();
+var data = workbook.AddWorksheet("Data");
+var summary = workbook.AddWorksheet("Summary");
+
+// Populate data sheet
+data.Cell("A1").Value = "Product";
+data.Cell("B1").Value = "Revenue";
+for (int i = 2; i <= 11; i++)
+{
+    data.Cell(i, 1).Value = $"Product {i - 1}";
+    data.Cell(i, 2).Value = (i - 1) * 1000;
+}
+
+// Build summary using cross-sheet formulas
+summary.Cell("A1").Value = "Metric";
+summary.Cell("B1").Value = "Value";
+
+summary.Cell("A2").Value = "Total Revenue";
+summary.Cell("B2").FormulaA1 = "SUM(Data!B2:B11)";
+
+summary.Cell("A3").Value = "Average Revenue";
+summary.Cell("B3").FormulaA1 = "AVERAGE(Data!B2:B11)";
+
+summary.Cell("A4").Value = "Max Revenue";
+summary.Cell("B4").FormulaA1 = "MAX(Data!B2:B11)";
+
+summary.Cell("A5").Value = "Product Count";
+summary.Cell("B5").FormulaA1 = "COUNTA(Data!A2:A11)";
+
+// Evaluate and save with current values
+var options = new SaveOptions { EvaluateFormulasBeforeSaving = true };
+workbook.SaveAs("summary.xlsx", options);
+
+// Print results
+workbook.RecalculateAllFormulas();
+Console.WriteLine($"Total:   {summary.Cell("B2").CachedValue}");   // 55000
+Console.WriteLine($"Average: {summary.Cell("B3").CachedValue}");   // 5500
+Console.WriteLine($"Max:     {summary.Cell("B4").CachedValue}");   // 10000
+Console.WriteLine($"Count:   {summary.Cell("B5").CachedValue}");   // 10
+```

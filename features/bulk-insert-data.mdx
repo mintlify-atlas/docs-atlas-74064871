@@ -1,0 +1,181 @@
+---
+title: "Bulk insert data"
+description: "Insert large amounts of data from DataTable, IEnumerable collections, POCO objects, tuples, and untyped collections using IXLCell.InsertData."
+---
+
+`IXLCell.InsertData` writes a collection of data starting at the referenced cell and returns the range it occupies. No header row is added — use `InsertTable` if you want a header.
+
+<Note>
+All `InsertData` overloads begin writing at the referenced cell and expand downward (and rightward for multi-column sources). Existing cell content is overwritten.
+</Note>
+
+## DataTable
+
+Insert data directly from an ADO.NET `DataTable`. Each column in the table maps to one spreadsheet column.
+
+```csharp
+var dataTable = new DataTable();
+dataTable.Columns.Add("Name", typeof(string));
+dataTable.Columns.Add("Sold", typeof(int));
+
+dataTable.Rows.Add("Cheesecake", 14);
+dataTable.Rows.Add("Medovik", 6);
+dataTable.Rows.Add("Muffin", 10);
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+ws.Cell("B3").InsertData(dataTable);
+wb.SaveAs("Demo-Bulk-Insert-Data-DataTable.xlsx");
+```
+
+## Generic enumerable
+
+### Objects and structs
+
+When the items in `IEnumerable<T>` are objects or structs, all public instance and static fields and properties become columns. Use `XLColumnAttribute` to control the mapping.
+
+| Attribute parameter | Effect |
+|---|---|
+| `Ignore = true` | Excludes the member from output |
+| `Order = n` | Sets the column order (member order in class is otherwise undefined) |
+| `Header = "…"` | Overrides the column header when using `InsertTable` |
+
+```csharp
+using ClosedXML.Attributes;
+using ClosedXML.Excel;
+
+public record Dessert(
+    [property: XLColumn(Ignore = true)] int SellerId,
+    [property: XLColumn(Order = 1)] string Name,
+    [property: XLColumn(Order = 2)] int Sales);
+
+var data = new[]
+{
+    new Dessert(1, "Cheesecake", 14),
+    new Dessert(2, "Medovik", 6),
+    new Dessert(2, "Muffin", 10),
+};
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+ws.Cell("B3").InsertData(data);
+wb.SaveAs("Demo-Bulk-Insert-Data-Objects.xlsx");
+```
+
+`SellerId` is excluded; `Name` and `Sales` are written in the declared order.
+
+### Nested IEnumerable (2D data)
+
+When items are themselves `IEnumerable` (e.g. arrays or `List`), each inner collection becomes one row. Inner elements must be assignable to a cell value.
+
+```csharp
+var data = new List<object[]>
+{
+    new object[] { "Cheesecake", 14 },
+    new object[] { "Medovik", 6 },
+    new object[] { "Muffin", 10 }
+};
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+ws.Cell("B3").InsertData(data);
+wb.SaveAs("Demo-Bulk-Insert-Data-Enumerable.xlsx");
+```
+
+### Simple types
+
+When items are primitive types, `string`, `DateTime`, `TimeSpan`, or their nullable equivalents, each item writes into a single column (one cell per row).
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Writes 1–10 down column A starting at A1
+ws.Cell("A1").InsertData(Enumerable.Range(1, 10));
+wb.SaveAs("Demo-Bulk-Insert-Data-Primitives.xlsx");
+```
+
+### IDataRecord
+
+When items implement `System.Data.IDataRecord` (e.g. from a `DbDataReader`), each record field maps to a column — similar to inserting from a `DataTable`.
+
+### DataRow
+
+When items are `DataRow` instances, ClosedXML behaves identically to inserting from a `DataTable`.
+
+## Untyped enumerable
+
+Use the non-generic `IEnumerable` overload for untyped collections such as `ArrayList`. Each item is handled by the same rules as the generic overload. ClosedXML also handles the case where items in the collection have different types.
+
+```csharp
+using ClosedXML.Attributes;
+using ClosedXML.Excel;
+
+public record Dessert(
+    [property: XLColumn(Ignore = true)] int SellerId,
+    [property: XLColumn(Order = 1)] string Name,
+    [property: XLColumn(Order = 2)] int Sales);
+
+var data = new ArrayList
+{
+    new object[] { "Cheesecake", 14 },
+    new Dessert(1, "Medovik", 6),
+    new object[] { "Muffin", 10 },
+};
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+ws.Cell("B3").InsertData(data);
+wb.SaveAs("Demo-Bulk-Insert-Data-UntypedEnumerable.xlsx");
+```
+
+Each item is processed according to its runtime type: the `object[]` rows use the nested-enumerable path and the `Dessert` record uses the object-mapping path.
+
+## Transposing data
+
+Pass `transpose: true` to write data horizontally (across columns) instead of vertically (down rows).
+
+```csharp
+var months = new[] { "Jan", "Feb", "Mar", "Apr" };
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Writes Jan, Feb, Mar, Apr across B1:E1
+ws.Cell("B1").InsertData(months, transpose: true);
+wb.SaveAs("Demo-Bulk-Insert-Data-Transposed.xlsx");
+```
+
+## Creating a table while inserting
+
+Use `IXLCell.InsertTable` to insert data and create an Excel table at the same time. The first row of the data source is used as header names.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+ws.FirstCell().InsertTable(new[]
+{
+    new Pastry("Pie", 10),
+    new Pastry("Cake", 7),
+    new Pastry("Waffles", 17)
+}, "PastrySales", createTable: true);
+
+wb.SaveAs("Demo-InsertTable.xlsx");
+
+record Pastry(string Name, int Sales);
+```
+
+See [Tables](/features/tables) for full coverage of table creation and manipulation.
+
+## Summary
+
+| Input type | Columns per item | Notes |
+|---|---|---|
+| `DataTable` | One per `DataColumn` | Preserves .NET types |
+| Object / struct | One per public member | Controlled via `XLColumnAttribute` |
+| Nested `IEnumerable` | Width of widest inner collection | Jagged collections supported |
+| `IDataRecord` | One per field | Works with ADO.NET readers |
+| `DataRow` | One per column | Same as `DataTable` |
+| Simple type | 1 | `string`, numerics, `DateTime`, `TimeSpan`, nullable variants |
+| `ArrayList` / untyped | Per-item runtime type | Mixed-type collections allowed |

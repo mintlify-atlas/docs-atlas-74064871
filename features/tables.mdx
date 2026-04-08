@@ -1,0 +1,317 @@
+---
+title: "Tables"
+description: "Create, resize, style, and query Excel tables using IXLTable, including headers, totals rows, auto filters, and structured references."
+---
+
+Excel tables (also called structured references) provide a named, resizable container for tabular data with built-in filtering, sorting, and formatting.
+
+## Creating a table
+
+There are two ways to create a table:
+
+- **`IXLCell.InsertTable`** — inserts data and creates the table in one step.
+- **`IXLRange.CreateTable`** — promotes an existing range to a table.
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+ws.ColumnWidth = 12;
+
+// Insert data and create a named table in one call
+ws.FirstCell().InsertTable(new[]
+{
+    new Pastry("Pie", 10),
+    new Pastry("Cake", 7),
+    new Pastry("Waffles", 17)
+}, "PastrySales", createTable: true);
+
+// Create a table from an existing data range
+ws.Range("D2:D5").CreateTable("Table");
+
+wb.SaveAs("tables-create.xlsx");
+
+record Pastry(string Name, int Sales);
+```
+
+<Note>
+Each column in a table is a field and must have a unique, non-empty name. If a header cell is empty, ClosedXML auto-generates a name for that column.
+</Note>
+
+You can also use `IXLRange.AsTable()` to treat a range as a table in memory without registering it in the worksheet's table list.
+
+## Table resizing
+
+Resize a table to a new range. If any header cell in the new range is empty, a name is auto-generated for that column.
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+ws.Cell(1, 1).Value = "Foo";
+ws.Cell(1, 2).Value = "Bar";
+ws.Range("A2:B5").Value = 10;
+var table = ws.Range("A1:B5").CreateTable();
+
+// Resize the table to B1:D3
+table.Resize("B1", "D3");
+
+wb.SaveAs("tables-resize.xlsx");
+```
+
+`Resize` accepts a range address string, row/column indices, `IXLCell` corner references, or an `IXLRange`.
+
+## Table theme
+
+Every table has a visual theme. A newly created table uses `XLTableTheme.None`. Change it by assigning a member of `XLTableTheme` to `IXLTable.Theme`.
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+ws.Cell("A1").SetValue("First");
+ws.Cell("A2").InsertData(Enumerable.Range(1, 5));
+ws.Cell("B1").SetValue("Second");
+ws.Cell("B2").InsertData(Enumerable.Range(1, 5));
+
+var table = ws.Range("A1:B6").CreateTable();
+table.Theme = XLTableTheme.TableStyleLight16;
+
+var table2 = table.CopyTo(ws.Cell("D1")).CreateTable();
+table2.Theme = XLTableTheme.TableStyleDark2;
+
+var table3 = table2.CopyTo(ws.Cell("G1")).CreateTable();
+table3.Theme = XLTableTheme.TableStyleMedium15;
+
+wb.SaveAs("tables-themes.xlsx");
+```
+
+<Tip>
+To find the exact enum member for an Excel theme, hover over the theme swatch in the Excel **Table Design** tab — the tooltip shows the name.
+</Tip>
+
+## Table style options
+
+`IXLTable` exposes several Boolean properties that correspond to the checkboxes in Excel's **Table Style Options** panel. Fluent `Set…` methods return the table for chaining.
+
+| Property | Default | Effect |
+|---|---|---|
+| `ShowHeaderRow` | `true` | Displays the header row with field names |
+| `ShowTotalsRow` | `false` | Adds a totals row at the bottom |
+| `ShowRowStripes` | `true` | Alternates row background shading |
+| `ShowColumnStripes` | `false` | Alternates column background shading |
+| `ShowAutoFilter` | `true` | Shows auto-filter dropdowns in the header |
+| `EmphasizeFirstColumn` | `false` | Bold formatting on the first column |
+| `EmphasizeLastColumn` | `false` | Bold formatting on the last column |
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+ws.Cell("A1").SetValue("First");
+ws.Cell("A2").InsertData(Enumerable.Range(1, 5));
+ws.Cell("B1").SetValue("Second");
+ws.Cell("B2").InsertData(Enumerable.Range(1, 5));
+
+var table = ws.Range("A1:B6").CreateTable();
+
+table
+    .SetShowHeaderRow(false)
+    .SetShowRowStripes(false)
+    .SetShowColumnStripes(true)
+    .SetShowAutoFilter(true)
+    .SetShowTotalsRow(true);
+
+// Totals functions can only be set when ShowTotalsRow is true
+table.Field("First").TotalsRowFunction = XLTotalsRowFunction.Sum;
+table.Field("Second").TotalsRowFunction = XLTotalsRowFunction.Average;
+
+wb.SaveAs("tables-structure.xlsx");
+```
+
+## Table name and structured references
+
+A table's name must be unique within the workbook and can be changed through `IXLTable.Name`. The name enables structured references in formulas.
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+ws.FirstCell().InsertTable(new[]
+{
+    new Pastry("Pie", 10),
+    new Pastry("Cake", 7),
+    new Pastry("Waffles", 17)
+}, "PastrySales", createTable: true);
+
+ws.Cell("D2").Value = "Total pastry sales:";
+ws.Cell("D3").FormulaA1 = "SUM(PastrySales[Sales])";
+
+wb.SaveAs("tables-formula-reference.xlsx");
+
+record Pastry(string Name, int Sales);
+```
+
+<Warning>
+ClosedXML does not yet evaluate structured references. Formulas containing table names are written to the file correctly and Excel will evaluate them, but `cell.Value` in ClosedXML will not resolve them.
+</Warning>
+
+## Headers and fields
+
+The header row displays field names. Whether it is visible is controlled by `ShowHeaderRow`.
+
+- Access a field by name: `table.Field("FieldName")` (case-insensitive).
+- Access a field by zero-based index: `table.Field(0)`.
+- Iterate all fields: `table.Fields`.
+- Change a field name: `IXLTableField.Name = "NewName"`.
+
+Field names are the source of truth. If the header row is hidden, field names still exist — they are just not projected onto header cells.
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+ws.Cell("A1").SetValue("Original Name");
+ws.Cell("A2").InsertData(Enumerable.Range(1, 5));
+
+var table = ws.Range("A1:A6").CreateTable("Table");
+table.ShowHeaderRow = false;
+
+// Changing the cell value doesn't change the field name
+ws.Cell("A1").Value = "Changed Name";
+
+// Formula still references the original field name
+ws.Cell("D2").FormulaA1 = "SUM(Table[Original Name])";
+
+wb.SaveAs("tables-header.xlsx");
+```
+
+## Totals row
+
+Enable the totals row with `ShowTotalsRow = true`, then set a summary function per field.
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+var table = ws.Cell("A1").InsertTable(new[]
+{
+    new Pastry("Cake", 39, 3),
+    new Pastry("Waffles", 15, 12),
+    new Pastry("Pie", 19, 27)
+});
+
+table.ShowTotalsRow = true;
+table.Field(nameof(Pastry.Name)).TotalsRowLabel = "Avg.";
+table.Field(nameof(Pastry.UnitPrice)).TotalsRowFunction = XLTotalsRowFunction.Average;
+table.Field(nameof(Pastry.Sold)).TotalsRowFunction = XLTotalsRowFunction.Average;
+
+wb.SaveAs("tables-totals.xlsx");
+
+record Pastry(string Name, double UnitPrice, int Sold);
+```
+
+Available `XLTotalsRowFunction` values: `None`, `Sum`, `Average`, `Count`, `CountNumbers`, `Minimum`, `Maximum`, `StandardDeviation`, `Variance`, `Custom`.
+
+For a custom formula use `IXLTableField.TotalsRowFormulaA1`. Reference table fields using structured references to keep the formula correct after resizing.
+
+```csharp
+// Custom formula using a structured reference
+table.Field("Sales").TotalsRowFormulaA1 = "SUBTOTAL(109,[Sales])";
+```
+
+<Warning>
+Methods that modify the totals row throw an exception if `ShowTotalsRow` is `false`.
+</Warning>
+
+## Auto filter
+
+Tables can use auto filter to let users sort and filter data through dropdown menus. For full auto filter documentation see [Auto filter](/features/autofilter).
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+var table = ws.Cell("B3").InsertTable(new[]
+{
+    new Pastry("Cake", 39, 3),
+    new Pastry("Waffles", 15, 12),
+    new Pastry("Pie", 19, 27)
+});
+
+table.ShowAutoFilter = true;
+table.AutoFilter.IsEnabled = true;
+
+// Sort by first column descending
+table.AutoFilter.Sort(1, XLSortOrder.Descending);
+
+// Filter to rows where the third column (Sold) is greater than 10
+table.AutoFilter.Column(3).GreaterThan(10);
+
+wb.SaveAs("tables-autofilter.xlsx");
+
+record Pastry(string Name, double UnitPrice, int Sold);
+```
+
+## Reading table data
+
+Access the data range (excluding header and totals) through `IXLTable.DataRange`, and iterate rows to read field values by name.
+
+```csharp
+using var wb = new XLWorkbook("tables-totals.xlsx");
+var ws = wb.Worksheet(1);
+var table = ws.Tables.First();
+
+foreach (IXLTableRow row in table.DataRange.Rows())
+{
+    string name  = row.Field("Name").GetString();
+    double price = row.Field("UnitPrice").GetDouble();
+    int sold     = row.Field("Sold").GetValue<int>();
+    Console.WriteLine($"{name}: {sold} @ {price:C}");
+}
+```
+
+## Converting a table to DataTable or dynamic
+
+```csharp
+// Convert to System.Data.DataTable
+DataTable dt = table.AsNativeDataTable();
+
+// Convert to IEnumerable<dynamic>
+foreach (dynamic row in table.AsDynamicEnumerable())
+    Console.WriteLine(row.Name);
+```
+
+## Appending and replacing data
+
+Use `AppendData` to add rows at the end of a table, or `ReplaceData` to overwrite all data rows.
+
+```csharp
+// Append new rows
+table.AppendData(new[]
+{
+    new Pastry("Eclair", 5, 9)
+});
+
+// Replace all data rows
+table.ReplaceData(new[]
+{
+    new Pastry("Macaron", 25, 2),
+    new Pastry("Croissant", 12, 8)
+});
+```

@@ -1,0 +1,272 @@
+---
+title: "Sparklines"
+description: "Add mini in-cell charts (sparklines) to worksheets using ClosedXML, with support for Line, Column, and Stacked types, custom styles, markers, and axis configuration."
+---
+
+Sparklines are miniature charts placed inside individual cells. They give a quick visual summary of data trends without taking up the space of a full chart.
+
+Excel supports three sparkline types:
+
+| Type | Description |
+|------|-------------|
+| `XLSparklineType.Line` | Line chart drawn within the cell. |
+| `XLSparklineType.Column` | Bar chart drawn within the cell. |
+| `XLSparklineType.Stacked` | 100% stacked bar chart drawn within the cell. |
+
+---
+
+## Sparkline groups
+
+Sparklines are organized into **sparkline groups** (`IXLSparklineGroup`). All sparklines in a group share the same display settings (type, style, markers, axis configuration). A worksheet can have multiple sparkline groups.
+
+Access all sparkline groups on a worksheet through `IXLWorksheet.SparklineGroups`.
+
+---
+
+## Creating sparklines
+
+### Add a single sparkline
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Sparklines");
+
+// Add data
+ws.Cell("B2").Value = 1;
+ws.Cell("C2").Value = 3;
+ws.Cell("D2").Value = 2;
+ws.Cell("E2").Value = 5;
+ws.Cell("F2").Value = 4;
+
+// Create a sparkline group with one sparkline:
+// location cell A2, data from B2:F2
+IXLSparklineGroup group = ws.SparklineGroups.Add("A2", "B2:F2");
+
+wb.SaveAs("sparkline-single.xlsx");
+```
+
+### Add a group of sparklines (range to range)
+
+When the location range and data range have the same number of rows (or columns), each row (or column) gets its own sparkline:
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Sparklines");
+
+// Three rows of data in C2:P4
+ws.Range("C2:P4").Cells()
+    .ForEach(c => c.Value = c.Address.ColumnNumber * c.Address.RowNumber);
+
+// Create three sparklines: A2→C2:P2, A3→C3:P3, A4→C4:P4
+IXLSparklineGroup group = ws.SparklineGroups.Add("A2:A4", "C2:P4");
+
+wb.SaveAs("sparkline-range.xlsx");
+```
+
+### Add sparklines with different data ranges in one group
+
+You can add individual sparklines with different source ranges to the same group:
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Sparklines");
+
+ws.SparklineGroups.Add("B17", "C17:P17")
+    .Add("B18", "C18:K18").Single().SparklineGroup  // returns the group
+    .Add("B19", "C19:E19").Single().SparklineGroup
+    .SetStyle(XLSparklineTheme.Colorful3)
+    .SetShowMarkers(XLSparklineMarkers.FirstPoint | XLSparklineMarkers.LastPoint);
+
+wb.SaveAs("sparkline-mixed-ranges.xlsx");
+```
+
+---
+
+## Sparkline types
+
+```csharp
+// Set the type on the group (applies to all sparklines in it)
+group.SetType(XLSparklineType.Column);
+
+// Convert all groups on a copied worksheet to Stacked
+ws.SparklineGroups.ForEach(g => g.SetType(XLSparklineType.Stacked));
+```
+
+---
+
+## Styles and themes
+
+Apply a built-in theme from `XLSparklineTheme` or configure colors individually via `IXLSparklineStyle`.
+
+### Built-in themes
+
+`XLSparklineTheme` provides named styles in four families:
+
+- `Dark1`–`Dark6`
+- `Colorful1`–`Colorful6`
+- `Accent1`–`Accent6`
+- `Accent1Darker25`–`Accent6Darker25`
+- `Accent1Darker50`–`Accent6Darker50`
+- `Accent1Lighter40`–`Accent6Lighter40`
+
+```csharp
+group.SetStyle(XLSparklineTheme.Colorful1);
+```
+
+### Custom style colors
+
+Use `IXLSparklineStyle` to set individual color components:
+
+```csharp
+group.Style.SetSeriesColor(XLColor.FromHtml("FF5F5F5F"));
+group.Style.SetNegativeColor(XLColor.Red);
+group.Style.SetHighMarkerColor(XLColor.Green);
+group.Style.SetLowMarkerColor(XLColor.FromHtml("FFFF5055"));
+group.Style.SetFirstMarkerColor(XLColor.Blue);
+group.Style.SetLastMarkerColor(XLColor.Orange);
+group.Style.SetMarkersColor(XLColor.Purple);
+```
+
+---
+
+## Markers
+
+Control which data points are highlighted with a marker using the `XLSparklineMarkers` flags enum:
+
+| Flag | Highlights |
+|------|-----------|
+| `HighPoint` | Highest value |
+| `LowPoint` | Lowest value |
+| `FirstPoint` | First data point |
+| `LastPoint` | Last data point |
+| `NegativePoints` | All negative values |
+| `Markers` | All data points |
+| `All` | All of the above |
+
+```csharp
+// Show all markers
+group.SetShowMarkers(XLSparklineMarkers.All);
+
+// Show only first, last, high, and low points
+group.SetShowMarkers(
+    XLSparklineMarkers.FirstPoint |
+    XLSparklineMarkers.LastPoint  |
+    XLSparklineMarkers.HighPoint  |
+    XLSparklineMarkers.LowPoint);
+```
+
+---
+
+## Vertical axis (scale)
+
+The vertical axis scale is configured through `IXLSparklineGroup.VerticalAxis` (`IXLSparklineVerticalAxis`).
+
+| `XLSparklineAxisMinMax` value | Meaning |
+|-------------------------------|---------|
+| `Automatic` | Each sparkline uses its own min/max. |
+| `SameForAll` | All sparklines in the group share the same min/max. |
+| `Custom` | Use manually specified min/max values. |
+
+```csharp
+// Same scale across all sparklines in the group
+group.VerticalAxis
+    .SetMinAxisType(XLSparklineAxisMinMax.SameForAll)
+    .SetMaxAxisType(XLSparklineAxisMinMax.SameForAll);
+
+// Custom fixed scale
+group.VerticalAxis
+    .SetManualMin(-80)
+    .SetManualMax(100);
+```
+
+---
+
+## Horizontal axis
+
+The horizontal axis is configured through `IXLSparklineGroup.HorizontalAxis` (`IXLSparklineHorizontalAxis`).
+
+```csharp
+group.HorizontalAxis
+    .SetVisible(true)
+    .SetColor(XLColor.Red)
+    .SetRightToLeft(true);   // draw sparkline right-to-left
+```
+
+### Date axis
+
+Assign a date range to map data points to dates instead of uniform spacing:
+
+```csharp
+// Use dates from C1:P1 as the x-axis for sparklines in the group
+group.SetDateRange(ws.Range("C1:P1"));
+```
+
+---
+
+## Complete example
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Linear");
+
+// Fill sample data: dates in row 1, numeric data in rows 2–4
+ws.Range("C1:P1").Cells()
+    .ForEach(c => c.Value = new DateTime(2016, 1, 1).AddDays(c.Address.ColumnNumber * 7));
+
+ws.Range("C2:P4").Cells()
+    .ForEach(c => c.Value =
+        Math.Round(c.Address.RowNumber * Math.Sin(c.Address.ColumnNumber) * 10, 0));
+
+// Group 1: Line sparklines, Colorful1 style, all markers, shared scale
+ws.SparklineGroups.Add("B2:B4", "C2:P4")
+    .SetStyle(XLSparklineTheme.Colorful1)
+    .SetShowMarkers(XLSparklineMarkers.All)
+    .VerticalAxis
+    .SetMaxAxisType(XLSparklineAxisMinMax.SameForAll)
+    .SetMinAxisType(XLSparklineAxisMinMax.SameForAll);
+
+// Group 2: Line sparklines, Colorful3, custom axis, markers + negative highlights
+ws.SparklineGroups.Add("B8:B10", "C8:P10")
+    .SetStyle(XLSparklineTheme.Colorful3)
+    .SetShowMarkers(XLSparklineMarkers.Markers | XLSparklineMarkers.NegativePoints)
+    .VerticalAxis
+    .SetManualMax(100)
+    .SetManualMin(-80);
+
+// Group 3: Line weight and axis direction
+ws.SparklineGroups.Add("B14:B16", "C14:P16")
+    .SetStyle(XLSparklineTheme.Colorful4)
+    .SetLineWeight(2)
+    .HorizontalAxis
+    .SetVisible(true)
+    .SetColor(XLColor.Red)
+    .SetRightToLeft(true);
+
+// Column sparklines on a copy of the worksheet
+var wsCol = ws.CopyTo("Column");
+wsCol.SparklineGroups.ForEach(g => g.SetType(XLSparklineType.Column));
+
+// Stacked sparklines on another copy
+var wsStacked = ws.CopyTo("Stacked");
+wsStacked.SparklineGroups.ForEach(g => g.SetType(XLSparklineType.Stacked));
+
+wb.SaveAs("sparklines-example.xlsx");
+```
+
+---
+
+## Removing sparklines
+
+```csharp
+// Remove a single sparkline by its location cell
+ws.SparklineGroups.Remove(ws.Cell("A2"));
+
+// Remove all sparklines in a range
+ws.SparklineGroups.Remove(ws.Range("A2:A4"));
+
+// Remove an entire sparkline group
+ws.SparklineGroups.Remove(group);
+
+// Remove all sparklines from the worksheet
+ws.SparklineGroups.RemoveAll();
+```

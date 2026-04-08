@@ -1,0 +1,392 @@
+---
+title: "Cell Styles"
+description: "Apply fonts, fills, borders, alignment, and number formats to cells, rows, columns, and ranges."
+---
+
+Cells in ClosedXML can be styled through the `IXLStyle` interface, which is accessible on any cell, row, column, or range. Every style change can be written as either direct property assignment or through a chainable fluent API — both produce the same result.
+
+## Fluent API vs property-based API
+
+```csharp
+// Property-based
+ws.Cell("A1").Style.Font.FontSize = 20;
+ws.Cell("A1").Style.Font.FontName = "Arial";
+
+// Fluent API — same result, chainable
+ws.Cell("A1").Style
+    .Font.SetFontSize(20)
+    .Font.SetFontName("Arial");
+```
+
+The fluent setters return `IXLStyle`, so you can chain multiple sub-style changes in one expression. Both approaches are valid; prefer whichever is more readable in context.
+
+## Font
+
+The `IXLStyle.Font` property exposes size, name, color, and decorations.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Bold, italic, strikethrough
+ws.Cell("A1").Style.Font.Bold = true;
+ws.Cell("A2").Style.Font.Italic = true;
+ws.Cell("A3").Style.Font.Strikethrough = true;
+
+// Underline styles
+ws.Cell("A4").Style.Font.Underline = XLFontUnderlineValues.Single;
+ws.Cell("A5").Style.Font.Underline = XLFontUnderlineValues.Double;
+
+// Size, name, and color
+ws.Cell("A6").Style.Font.FontSize = 14;
+ws.Cell("A6").Style.Font.FontName = "Calibri";
+ws.Cell("A6").Style.Font.FontColor = XLColor.DarkBlue;
+
+// Vertical alignment (superscript / subscript)
+ws.Cell("A7").Style.Font.VerticalAlignment = XLFontVerticalTextAlignmentValues.Superscript;
+
+wb.SaveAs("font-styles.xlsx");
+```
+
+### Underline values
+
+| Value | Description |
+|---|---|
+| `None` | No underline |
+| `Single` | Single underline |
+| `Double` | Double underline |
+| `SingleAccounting` | Single accounting underline |
+| `DoubleAccounting` | Double accounting underline |
+
+### Font scheme
+
+Fonts can be linked to the workbook theme's font scheme. When the theme changes, Excel updates the font automatically.
+
+```csharp
+ws.Cell("A1").Style.Font.FontScheme = XLFontScheme.Major; // heading font
+ws.Cell("A2").Style.Font.FontScheme = XLFontScheme.Minor; // body font
+ws.Cell("A3").Style.Font.FontScheme = XLFontScheme.None;  // explicit font, no scheme
+```
+
+<Note>
+Font scheme takes precedence over an explicitly set font name. If `FontScheme` is `Major` or `Minor`, Excel displays the theme font regardless of `FontName`.
+</Note>
+
+## Fill (background color)
+
+Set a solid background color through `IXLStyle.Fill.BackgroundColor`. Setting a non-transparent color on a cell that has no fill automatically switches the pattern type to `Solid`.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Named color
+ws.Cell("A1").Style.Fill.BackgroundColor = XLColor.LightYellow;
+
+// Fluent
+ws.Cell("A2").Style.Fill.SetBackgroundColor(XLColor.Red);
+
+// Pattern fill (background + foreground)
+ws.Cell("A3").Style.Fill.PatternType = XLFillPatternValues.DarkTrellis;
+ws.Cell("A3").Style.Fill.PatternColor = XLColor.Orange;
+ws.Cell("A3").Style.Fill.BackgroundColor = XLColor.Blue;
+
+wb.SaveAs("fill-styles.xlsx");
+```
+
+### XLColor options
+
+`XLColor` can be constructed in several ways:
+
+```csharp
+XLColor.Red                                      // named color constant
+XLColor.FromArgb(255, 0, 0)                      // R, G, B
+XLColor.FromArgb(0xFF0000)                       // hex integer
+XLColor.FromHtml("#FF0000")                      // HTML hex string
+XLColor.FromColor(System.Drawing.Color.Red)      // System.Drawing.Color
+XLColor.FromIndex(25)                            // indexed palette color
+XLColor.FromName("PowderBlue")                   // color name string
+XLColor.FromTheme(XLThemeColor.Accent1)          // theme color (symbolic)
+XLColor.FromTheme(XLThemeColor.Accent1, 0.5)     // theme color with tint
+```
+
+<Note>
+Theme colors (`XLColor.FromTheme`) store a symbolic reference, not an RGB value. The displayed color updates automatically when the workbook theme changes. Calling `XLColor.Color` on a theme color throws an exception; use `workbook.Theme.ResolveThemeColor(XLThemeColor)` to get the actual RGB value.
+</Note>
+
+## Borders
+
+Each cell has four side borders (top, right, bottom, left) and two optional diagonal borders. Set the style first, then the color — setting a style to `None` resets the color to the default.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Individual sides
+ws.Cell("B2").Style.Border.TopBorder    = XLBorderStyleValues.Medium;
+ws.Cell("B2").Style.Border.RightBorder  = XLBorderStyleValues.Medium;
+ws.Cell("B2").Style.Border.BottomBorder = XLBorderStyleValues.Medium;
+ws.Cell("B2").Style.Border.LeftBorder   = XLBorderStyleValues.Medium;
+
+// Colors (set after style)
+ws.Cell("B3").Style.Border.BottomBorder      = XLBorderStyleValues.Thick;
+ws.Cell("B3").Style.Border.BottomBorderColor = XLColor.Red;
+
+ws.Cell("B3").Style.Border.LeftBorder      = XLBorderStyleValues.Thick;
+ws.Cell("B3").Style.Border.LeftBorderColor = XLColor.Blue;
+
+// Diagonal borders
+ws.Cell("B4").Style.Border.DiagonalBorder      = XLBorderStyleValues.Thin;
+ws.Cell("B4").Style.Border.DiagonalBorderColor = XLColor.Red;
+ws.Cell("B4").Style.Border.DiagonalUp   = true;  // bottom-left to top-right
+ws.Cell("B4").Style.Border.DiagonalDown = true;  // top-left to bottom-right
+
+// Fluent: all four sides at once
+ws.Cell("B5").Style
+    .Border.SetTopBorder(XLBorderStyleValues.Thin)
+    .Border.SetRightBorder(XLBorderStyleValues.Thin)
+    .Border.SetBottomBorder(XLBorderStyleValues.Thin)
+    .Border.SetLeftBorder(XLBorderStyleValues.Thin);
+
+wb.SaveAs("border-styles.xlsx");
+```
+
+### Border style values
+
+| Value | Appearance |
+|---|---|
+| `None` | No border |
+| `Hair` | Hairline |
+| `Thin` | Thin |
+| `Medium` | Medium |
+| `Thick` | Thick |
+| `Double` | Double line |
+| `Dotted` | Dotted |
+| `Dashed` | Dashed |
+| `DashDot` | Dash-dot |
+| `DashDotDot` | Dash-dot-dot |
+| `MediumDashed` | Medium dashed |
+| `MediumDashDot` | Medium dash-dot |
+| `MediumDashDotDot` | Medium dash-dot-dot |
+| `SlantDashDot` | Slant dash-dot |
+
+### Outside and inside borders for ranges
+
+When applying borders to a multi-cell range, use `OutsideBorder` and `InsideBorder` to target the outer edge and internal grid lines respectively:
+
+```csharp
+ws.Range("B2:D4").Style
+    .Border.SetOutsideBorder(XLBorderStyleValues.Thick)
+    .Border.SetOutsideBorderColor(XLColor.Black)
+    .Border.SetInsideBorder(XLBorderStyleValues.Thin)
+    .Border.SetInsideBorderColor(XLColor.Gray);
+```
+
+## Alignment
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Horizontal alignment
+ws.Cell("A1").Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+ws.Cell("A2").Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+ws.Cell("A3").Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Justify;
+
+// Vertical alignment
+ws.Cell("A4").Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
+ws.Cell("A5").Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+
+// Wrap text
+ws.Cell("A6").Style.Alignment.WrapText = true;
+
+// Indent (in units of ~3x the space character width in the Normal style font)
+ws.Cell("A7").Style.Alignment.Indent = 2;
+
+// Shrink to fit
+ws.Cell("A8").Style.Alignment.ShrinkToFit = true;
+
+wb.SaveAs("alignment-styles.xlsx");
+```
+
+### Text rotation
+
+Text can be rotated from -90° to 90°, or set to a vertical top-to-bottom layout (value 255).
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+ws.ColumnWidth = 10;
+
+// Vertical (top-to-bottom) layout
+ws.Cell(1, 1).SetValue("Vertical").Style.Alignment.SetTextRotation(255);
+
+// Angled rotation
+for (var angle = -90; angle <= 90; angle += 30)
+{
+    var column = angle / 30 + 5;
+    ws.Cell(1, column)
+        .SetValue($"Rotation: {angle}")
+        .Style.Alignment.SetTextRotation(angle);
+}
+
+wb.SaveAs("alignment-rotation.xlsx");
+```
+
+<Note>
+Setting `TopToBottom = true` is equivalent to `TextRotation = 255`. Setting `TopToBottom = false` resets `TextRotation` to 0.
+</Note>
+
+### Horizontal alignment values
+
+| Value | Description |
+|---|---|
+| `General` | Default (numbers right-aligned, text left-aligned) |
+| `Left` | Left-aligned |
+| `Center` | Centered |
+| `Right` | Right-aligned |
+| `Fill` | Repeat content to fill the cell width |
+| `Justify` | Justify wrapped lines (last line is not justified) |
+| `CenterContinuous` | Center across selected cells |
+| `Distributed` | Distribute text evenly |
+
+## Number formats
+
+Number formats change how a value is displayed without changing the stored value. You can retrieve the formatted string with `IXLCell.GetFormattedString()`.
+
+### Built-in (predefined) formats
+
+ClosedXML provides `XLPredefinedFormat` with common format IDs:
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Integer: "0"
+ws.Cell("A1").Value = 1234;
+ws.Cell("A1").Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.Integer;
+
+// Two decimal places: "0.00"
+ws.Cell("A2").Value = 1234.5678;
+ws.Cell("A2").Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.Precision2;
+
+// Thousands separator: "#,##0"
+ws.Cell("A3").Value = 1234567;
+ws.Cell("A3").Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.IntegerWithSeparator;
+
+// Percentage: "0%"
+ws.Cell("A4").Value = 0.75;
+ws.Cell("A4").Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
+
+// Date: locale-dependent
+ws.Cell("A5").Value = new DateTime(2024, 6, 15);
+ws.Cell("A5").Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.DateTime.DayMonthYear4WithSlashes;
+
+wb.SaveAs("predefined-formats.xlsx");
+```
+
+<Warning>
+Built-in format IDs map to locale-dependent format strings. Format ID 20 (`Hour24Minutes`) produces `h:mm` in en-US Excel and `hh:mm` in en-GB Excel. Use custom format strings when you need locale-independent output.
+</Warning>
+
+### Common predefined format IDs
+
+| Constant | ID | Example output |
+|---|---|---|
+| `Number.Integer` | 1 | `1234` |
+| `Number.Precision2` | 2 | `1234.57` |
+| `Number.IntegerWithSeparator` | 3 | `1,234` |
+| `Number.Precision2WithSeparator` | 4 | `1,234.57` |
+| `Number.PercentInteger` | 9 | `75%` |
+| `Number.PercentPrecision2` | 10 | `75.00%` |
+| `Number.ScientificPrecision2` | 11 | `1.23E+03` |
+| `DateTime.DayMonthYear4WithSlashes` | 14 | `6/15/2024` |
+| `DateTime.Hour24Minutes` | 20 | `14:30` |
+| `DateTime.Hour24MinutesSeconds` | 21 | `14:30:00` |
+| `Number.Text` | 49 | `@` (text format) |
+
+### Custom format strings
+
+Use a format code string for precise control. Format codes follow the [Excel number format specification](https://support.microsoft.com/en-us/office/number-format-codes-5026bbd6-04bc-48cd-bf33-80f18b4eae68).
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Currency with thousands separator
+ws.Cell("A1").Value = 123456.789;
+ws.Cell("A1").Style.NumberFormat.Format = "$ #,##0.00";
+
+// Zero-padded number
+ws.Cell("A2").Value = 12.345;
+ws.Cell("A2").Style.NumberFormat.Format = "0000";
+
+// Positive/negative with different formats
+var format = "#,##0.0; (#,##0.000)";
+ws.Cell("A3").Value = 10;
+ws.Cell("A3").Style.NumberFormat.Format = format;
+
+ws.Cell("A4").Value = -10;
+ws.Cell("A4").Style.NumberFormat.Format = format;
+
+// Fluent API
+ws.Cell("A5").Style.NumberFormat.SetFormat("0.00%");
+
+wb.SaveAs("custom-formats.xlsx");
+```
+
+<Warning>
+Format code strings in the xlsx file must sometimes be escaped. If your format isn't displaying correctly, set the format in Excel, save the file, rename the `.xlsx` to `.zip`, and copy the escaped string from `/xl/styles.xml`.
+</Warning>
+
+## Applying styles to rows, columns, and ranges
+
+Styles apply to any object that exposes `IXLStyle`, not just individual cells:
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Style Rows and Columns");
+
+// Entire worksheet
+ws.Style.Font.Bold = true;
+ws.Style.Fill.BackgroundColor = XLColor.LightCyan;
+
+// A row
+ws.Row(1).Style.Fill.BackgroundColor = XLColor.LightGray;
+
+// Multiple rows
+ws.Rows(2, 3).Style.Fill.BackgroundColor = XLColor.Blue;
+
+// A column by letter
+ws.Column("E").Style.Fill.BackgroundColor = XLColor.Gray;
+
+// Multiple columns by index
+ws.Columns(3, 4).Style.Fill.BackgroundColor = XLColor.Orange;
+
+// A named range
+ws.Range("B2:D5").Style
+    .Font.SetBold()
+    .Fill.SetBackgroundColor(XLColor.Yellow)
+    .Border.SetOutsideBorder(XLBorderStyleValues.Medium);
+
+wb.SaveAs("rows-columns-styles.xlsx");
+```
+
+## Copying styles between cells
+
+Copy a style from one cell to another by assigning the `Style` property:
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Set up a source style
+ws.Cell("A1").Style.Font.Bold = true;
+ws.Cell("A1").Style.Fill.BackgroundColor = XLColor.LightBlue;
+ws.Cell("A1").Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+
+// Copy to another cell
+ws.Cell("B1").Style = ws.Cell("A1").Style;
+
+wb.SaveAs("copy-style.xlsx");
+```

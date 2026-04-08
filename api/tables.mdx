@@ -1,0 +1,457 @@
+---
+title: "IXLTable"
+description: "API reference for Excel tables — creation, fields, themes, and totals row configuration in ClosedXML."
+---
+
+## Overview
+
+`IXLTable` extends `IXLRange` and represents a structured Excel table (ListObject). Tables provide named columns (fields), optional header/totals rows, autofilter support, and themed formatting.
+
+## Getting or creating a table
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Create a table by inserting data
+IXLTable table = ws.FirstCell().InsertTable(new[]
+{
+    new Pastry("Pie", 10),
+    new Pastry("Cake", 7),
+    new Pastry("Waffles", 17)
+}, "PastrySales", createTable: true);
+
+// Or create a table from an existing range
+IXLTable tableFromRange = ws.Range("D2:F10").CreateTable("SalesData");
+
+// Access an existing table by name
+IXLTable existing = ws.Table("PastrySales");
+
+record Pastry(string Name, int Sales);
+```
+
+---
+
+## IXLTable properties
+
+### Name
+
+```csharp
+string Name { get; set; }
+```
+
+Gets or sets the table name. The name must be unique across the worksheet. Structural references in formulas (e.g. `=SUM(PastrySales[Sales])`) are **not** updated automatically when renaming.
+
+**Throws** `ArgumentException` if the new name is already used by another table in the sheet.
+
+---
+
+### Theme
+
+```csharp
+XLTableTheme Theme { get; set; }
+```
+
+Gets or sets the visual theme of the table. Assign a static member of `XLTableTheme` (see [XLTableTheme](#xltabletheme)).
+
+```csharp
+table.Theme = XLTableTheme.TableStyleMedium15;
+```
+
+---
+
+### ShowHeaderRow
+
+```csharp
+Boolean ShowHeaderRow { get; set; }
+```
+
+Controls whether the header row (with field names) is visible. Field names exist regardless of visibility.
+
+---
+
+### ShowTotalsRow
+
+```csharp
+Boolean ShowTotalsRow { get; set; }
+```
+
+Controls whether the totals row is displayed. `IXLTableField` totals properties require this to be `true`.
+
+---
+
+### ShowRowStripes
+
+```csharp
+Boolean ShowRowStripes { get; set; }
+```
+
+Alternates row background colors according to the table theme.
+
+---
+
+### ShowColumnStripes
+
+```csharp
+Boolean ShowColumnStripes { get; set; }
+```
+
+Alternates column background colors according to the table theme.
+
+---
+
+### ShowAutoFilter
+
+```csharp
+Boolean ShowAutoFilter { get; set; }
+```
+
+Shows or hides the autofilter dropdown arrows in the header row.
+
+---
+
+### EmphasizeFirstColumn
+
+```csharp
+Boolean EmphasizeFirstColumn { get; set; }
+```
+
+Applies special formatting to the first column as defined by the theme.
+
+---
+
+### EmphasizeLastColumn
+
+```csharp
+Boolean EmphasizeLastColumn { get; set; }
+```
+
+Applies special formatting to the last column as defined by the theme.
+
+---
+
+### DataRange
+
+```csharp
+IXLTableRange DataRange { get; }
+```
+
+Returns the data range of the table, excluding the header row and totals row.
+
+---
+
+### AutoFilter
+
+```csharp
+IXLAutoFilter AutoFilter { get; }
+```
+
+Returns the autofilter associated with this table. See [IXLAutoFilter](/api/autofilter).
+
+---
+
+### Fields
+
+```csharp
+IEnumerable<IXLTableField> Fields { get; }
+```
+
+Enumerates all fields (columns) in the table from left to right.
+
+---
+
+## IXLTable methods
+
+### Field
+
+```csharp
+IXLTableField Field(string fieldName);
+IXLTableField Field(int fieldIndex);
+```
+
+Returns the field with the given name (case-insensitive) or at the given 0-based index.
+
+**Throws** `ArgumentOutOfRangeException` if the field does not exist.
+
+---
+
+### Resize
+
+```csharp
+IXLTable Resize(IXLRange range);
+IXLTable Resize(IXLRangeAddress rangeAddress);
+IXLTable Resize(string rangeAddress);
+IXLTable Resize(IXLCell firstCell, IXLCell lastCell);
+IXLTable Resize(string firstCellAddress, string lastCellAddress);
+IXLTable Resize(IXLAddress firstCellAddress, IXLAddress lastCellAddress);
+IXLTable Resize(int firstCellRow, int firstCellColumn, int lastCellRow, int lastCellColumn);
+```
+
+Resizes the table to the specified range. Any header cell in the new range that is empty receives an auto-generated name.
+
+```csharp
+table.Resize("B1", "D10");
+```
+
+---
+
+### AppendData
+
+```csharp
+IXLRange AppendData(IEnumerable data, Boolean propagateExtraColumns = false);
+IXLRange AppendData(IEnumerable data, Boolean transpose, Boolean propagateExtraColumns = false);
+IXLRange AppendData(DataTable dataTable, Boolean propagateExtraColumns = false);
+IXLRange AppendData<T>(IEnumerable<T> data, Boolean propagateExtraColumns = false);
+```
+
+Appends rows from the given data below the current table body. Returns the range of the newly inserted rows.
+
+<ParamField body="data" type="IEnumerable">
+  The data to append.
+</ParamField>
+<ParamField body="propagateExtraColumns" type="Boolean" default="false">
+  When `true`, copies values and formulas from extra columns to new rows.
+</ParamField>
+
+---
+
+### ReplaceData
+
+```csharp
+IXLRange ReplaceData(IEnumerable data, Boolean propagateExtraColumns = false);
+IXLRange ReplaceData(IEnumerable data, Boolean transpose, Boolean propagateExtraColumns = false);
+IXLRange ReplaceData(DataTable dataTable, Boolean propagateExtraColumns = false);
+IXLRange ReplaceData<T>(IEnumerable<T> data, Boolean propagateExtraColumns = false);
+```
+
+Replaces all data rows in the table with the supplied data. Returns the table's data range.
+
+---
+
+### HeadersRow / TotalsRow
+
+```csharp
+IXLRangeRow HeadersRow();
+IXLRangeRow TotalsRow();
+```
+
+Returns the header row or the totals row as an `IXLRangeRow`.
+
+---
+
+### SetAutoFilter
+
+```csharp
+IXLAutoFilter SetAutoFilter();
+```
+
+Enables autofilter on the table and returns the `IXLAutoFilter` object.
+
+---
+
+### Fluent Set methods
+
+Each boolean property has a corresponding fluent setter that returns `IXLTable`:
+
+```csharp
+IXLTable SetShowHeaderRow();
+IXLTable SetShowHeaderRow(Boolean value);
+
+IXLTable SetShowTotalsRow();
+IXLTable SetShowTotalsRow(Boolean value);
+
+IXLTable SetShowRowStripes();
+IXLTable SetShowRowStripes(Boolean value);
+
+IXLTable SetShowColumnStripes();
+IXLTable SetShowColumnStripes(Boolean value);
+
+IXLTable SetShowAutoFilter();
+IXLTable SetShowAutoFilter(Boolean value);
+
+IXLTable SetEmphasizeFirstColumn();
+IXLTable SetEmphasizeFirstColumn(Boolean value);
+
+IXLTable SetEmphasizeLastColumn();
+IXLTable SetEmphasizeLastColumn(Boolean value);
+```
+
+These allow chaining:
+
+```csharp
+table
+    .SetShowHeaderRow(true)
+    .SetShowTotalsRow(true)
+    .SetShowRowStripes(false)
+    .SetShowColumnStripes(true);
+```
+
+---
+
+### CopyTo
+
+```csharp
+IXLTable CopyTo(IXLWorksheet targetSheet);
+```
+
+Copies the table to another worksheet. The copy retains the same structure and data.
+
+---
+
+### Data conversion
+
+```csharp
+IEnumerable<dynamic> AsDynamicEnumerable();
+DataTable AsNativeDataTable();
+```
+
+Converts the table data to dynamic objects or a `System.Data.DataTable` for interop.
+
+---
+
+### Clear
+
+```csharp
+IXLTable Clear(XLClearOptions clearOptions = XLClearOptions.All);
+```
+
+Clears the contents of the table according to the specified options.
+
+---
+
+## IXLTableField
+
+Represents a single column (field) of a table.
+
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `Name` | `string` | Gets or sets the field name. Setting this also updates the header cell value. |
+| `Index` | `int` | Zero-based column index within the table. |
+| `TotalsRowFunction` | `XLTotalsRowFunction` | Aggregation function shown in the totals row cell. |
+| `TotalsRowLabel` | `string` | Static label shown in the totals row (for non-formula columns). Requires `ShowTotalsRow`. |
+| `TotalsRowFormulaA1` | `string` | Custom formula in A1 notation for the totals row cell. |
+| `TotalsRowFormulaR1C1` | `string` | Custom formula in R1C1 notation for the totals row cell. |
+| `Column` | `IXLRangeColumn` | The full column range including header and totals cells. |
+| `DataCells` | `IXLCells` | The data cells of the field, excluding header and totals. |
+| `HeaderCell` | `IXLCell` | The header cell. `null` if `ShowHeaderRow` is `false`. |
+| `TotalsCell` | `IXLCell` | The totals cell. `null` if `ShowTotalsRow` is `false`. |
+| `Table` | `IXLTable` | The parent table. |
+
+### Methods
+
+```csharp
+void Delete();
+Boolean IsConsistentDataType();
+Boolean IsConsistentFormula();
+Boolean IsConsistentStyle();
+```
+
+### Example: Totals row
+
+```csharp
+table.ShowTotalsRow = true;
+
+// Set a label in the Name column totals cell
+table.Field("Name").TotalsRowLabel = "Averages:";
+
+// Set aggregation functions for numeric columns
+table.Field("UnitPrice").TotalsRowFunction = XLTotalsRowFunction.Average;
+table.Field("Sold").TotalsRowFunction = XLTotalsRowFunction.Sum;
+
+// Or use a custom formula
+table.Field("Revenue").TotalsRowFormulaA1 = "=SUM(SalesTable[Revenue])";
+```
+
+---
+
+## XLTableTheme
+
+`XLTableTheme` is a **class** (not an enum) with static readonly fields for each built-in Excel table style. Assign instances to `IXLTable.Theme`.
+
+### Light styles
+
+`TableStyleLight1` through `TableStyleLight21`
+
+### Medium styles
+
+`TableStyleMedium1` through `TableStyleMedium28`
+
+### Dark styles
+
+`TableStyleDark1` through `TableStyleDark11`
+
+### Special
+
+`XLTableTheme.None` — No theme applied (default for newly created tables).
+
+```csharp
+table.Theme = XLTableTheme.TableStyleLight16;
+table.Theme = XLTableTheme.TableStyleDark2;
+table.Theme = XLTableTheme.TableStyleMedium15;
+table.Theme = XLTableTheme.None;
+
+// Enumerate all built-in themes
+foreach (var theme in XLTableTheme.GetAllThemes())
+    Console.WriteLine(theme.Name);
+
+// Look up by name
+XLTableTheme? t = XLTableTheme.FromName("TableStyleMedium9");
+```
+
+---
+
+## XLTotalsRowFunction
+
+Controls the aggregation function displayed in the totals row cell of a field.
+
+| Value | Description |
+|---|---|
+| `None` | No function — cell is empty (default). |
+| `Sum` | Sum of all values in the field. |
+| `Minimum` | Minimum value. |
+| `Maximum` | Maximum value. |
+| `Average` | Average of all values. |
+| `Count` | Count of all cells (including non-numeric). |
+| `CountNumbers` | Count of numeric cells only. |
+| `StandardDeviation` | Sample standard deviation. |
+| `Variance` | Sample variance. |
+| `Custom` | A custom formula set via `TotalsRowFormulaA1`. |
+
+---
+
+## Full example
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+var table = ws.Cell("A1").InsertTable(new[]
+{
+    new Pastry("Cake",    39.0, 3),
+    new Pastry("Waffles", 15.0, 12),
+    new Pastry("Pie",     19.0, 27),
+}, "PastrySales");
+
+// Style
+table.Theme = XLTableTheme.TableStyleMedium9;
+table
+    .SetShowRowStripes(true)
+    .SetShowColumnStripes(false)
+    .SetEmphasizeFirstColumn(false);
+
+// Totals
+table.ShowTotalsRow = true;
+table.Field(nameof(Pastry.Name)).TotalsRowLabel = "Total:";
+table.Field(nameof(Pastry.UnitPrice)).TotalsRowFunction = XLTotalsRowFunction.Average;
+table.Field(nameof(Pastry.Sold)).TotalsRowFunction = XLTotalsRowFunction.Sum;
+
+wb.SaveAs("tables.xlsx");
+
+record Pastry(string Name, double UnitPrice, int Sold);
+```

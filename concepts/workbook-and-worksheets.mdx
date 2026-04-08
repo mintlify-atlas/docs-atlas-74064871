@@ -1,0 +1,333 @@
+---
+title: "Workbooks and Worksheets"
+description: "Understand the workbook/worksheet hierarchy in ClosedXML and learn how to create, load, and manage workbooks and worksheets."
+---
+
+## Overview
+
+In ClosedXML, a **workbook** (`IXLWorkbook`) is the top-level container — it corresponds directly to a single `.xlsx` or `.xlsm` file. Each workbook holds one or more **worksheets** (`IXLWorksheet`), which are the individual tabbed sheets that contain cells.
+
+```
+XLWorkbook
+└── IXLWorksheets (Worksheets collection)
+    ├── IXLWorksheet ("Sheet1")
+    ├── IXLWorksheet ("Sheet2")
+    └── ...
+```
+
+Every worksheet belongs to exactly one workbook, and you can access the parent workbook from any worksheet through `worksheet.Workbook`.
+
+---
+
+## Creating and loading workbooks
+
+<Tabs>
+  <Tab title="New workbook">
+    Create an empty workbook in memory using the `XLWorkbook` constructor:
+
+    ```csharp
+    using ClosedXML.Excel;
+
+    // Create a new, empty workbook
+    using var workbook = new XLWorkbook();
+
+    // Add a worksheet and write a value
+    var ws = workbook.AddWorksheet("Report");
+    ws.Cell("A1").Value = "Hello, ClosedXML!";
+
+    // Save to disk
+    workbook.SaveAs("report.xlsx");
+    ```
+  </Tab>
+  <Tab title="Load existing file">
+    Open an existing `.xlsx` file by passing its path to the constructor:
+
+    ```csharp
+    using ClosedXML.Excel;
+
+    // Open an existing workbook
+    using var workbook = new XLWorkbook("report.xlsx");
+
+    // Read a value from the first worksheet
+    var ws = workbook.Worksheet(1);
+    Console.WriteLine(ws.Cell("A1").Value);
+
+    // Modify and save back
+    ws.Cell("B1").Value = 42;
+    workbook.Save();
+    ```
+  </Tab>
+  <Tab title="Open from template">
+    Use `XLWorkbook.OpenFromTemplate` to open a file as a template. The file is copied into memory so the original is never modified:
+
+    ```csharp
+    using ClosedXML.Excel;
+
+    // Open a template (file on disk is not modified)
+    using var workbook = XLWorkbook.OpenFromTemplate("template.xlsx");
+
+    workbook.Worksheet("Data").Cell("A1").Value = "Generated value";
+
+    // Must save to a new path — the template is read-only
+    workbook.SaveAs("output.xlsx");
+    ```
+  </Tab>
+  <Tab title="Save to stream">
+    Save a workbook to any writable `Stream`, which is useful for web responses or in-memory processing:
+
+    ```csharp
+    using ClosedXML.Excel;
+    using System.IO;
+
+    using var workbook = new XLWorkbook();
+    workbook.AddWorksheet("Export").Cell("A1").Value = "Data";
+
+    using var stream = new MemoryStream();
+    workbook.SaveAs(stream);
+
+    // stream now contains the .xlsx bytes
+    byte[] bytes = stream.ToArray();
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Always wrap `XLWorkbook` in a `using` statement or call `Dispose()` explicitly. ClosedXML implements `IDisposable` to release internal resources.
+</Note>
+
+---
+
+## Managing worksheets
+
+### Adding worksheets
+
+`AddWorksheet` has several overloads. If you omit the name, ClosedXML generates a default name like `Sheet1`, `Sheet2`, and so on. If you omit the position, the new sheet is appended at the end.
+
+```csharp
+using var workbook = new XLWorkbook();
+
+// Add with auto-generated name at the last position
+workbook.AddWorksheet();
+
+// Add with a specific name at the last position
+workbook.AddWorksheet("Export");
+
+// Add with a name at a specific position (1-based)
+// Result: "Sheet1" at position 1, "Import" at position 2, "Export" at position 3
+workbook.AddWorksheet("Sheet1");
+workbook.AddWorksheet("Export");
+workbook.AddWorksheet("Import", 2);
+```
+
+<Tip>
+  `workbook.Worksheets.Add(...)` behaves identically to `workbook.AddWorksheet(...)`. Both methods are available and interchangeable.
+</Tip>
+
+### Removing worksheets
+
+Delete a worksheet by name or by its 1-based position:
+
+```csharp
+using var workbook = new XLWorkbook("report.xlsx");
+
+// Delete by name
+workbook.Worksheets.Delete("Export");
+
+// Delete by position (1-based)
+workbook.Worksheets.Delete(2);
+
+// Delete via the worksheet object itself
+workbook.Worksheet("Temp").Delete();
+```
+
+### Moving (reordering) worksheets
+
+Change the order of worksheets by setting the `Position` property. All other sheets shift accordingly.
+
+```csharp
+using var workbook = new XLWorkbook();
+workbook.AddWorksheet("Sheet1");
+workbook.AddWorksheet("Sheet2");
+workbook.AddWorksheet("Sheet3");
+workbook.AddWorksheet("Sheet4");
+
+// Move Sheet1 to position 3
+// Result order: Sheet2, Sheet3, Sheet1, Sheet4
+workbook.Worksheet("Sheet1").Position = 3;
+```
+
+### Renaming worksheets
+
+Set the `Name` property directly on an `IXLWorksheet`. ClosedXML automatically updates all formulas and defined names that reference the old sheet name.
+
+```csharp
+using var workbook = new XLWorkbook("report.xlsx");
+
+var ws = workbook.Worksheet("OldName");
+ws.Name = "NewName";
+
+// Formulas like =OldName!A1 are updated to =NewName!A1 automatically
+workbook.Save();
+```
+
+### Copying worksheets
+
+Copy a worksheet within the same workbook or into a different workbook:
+
+```csharp
+using var workbook = new XLWorkbook("report.xlsx");
+using var target = new XLWorkbook();
+
+// Copy within the same workbook
+workbook.Worksheet("Template").CopyTo("Q1 Report");
+
+// Copy to a different workbook
+workbook.Worksheet("Summary").CopyTo(target, "Summary Copy");
+
+target.SaveAs("copy.xlsx");
+```
+
+---
+
+## Accessing worksheets
+
+<AccordionGroup>
+  <Accordion title="By name">
+    Access a worksheet by its exact name. Throws if the name does not exist.
+
+    ```csharp
+    IXLWorksheet ws = workbook.Worksheet("Sales");
+    ```
+  </Accordion>
+  <Accordion title="By position (1-based index)">
+    Access a worksheet by its 1-based tab position from left to right.
+
+    ```csharp
+    // Get the first worksheet
+    IXLWorksheet first = workbook.Worksheet(1);
+    ```
+  </Accordion>
+  <Accordion title="Safe lookup (TryGetWorksheet)">
+    Use `TryGetWorksheet` to avoid exceptions when the sheet may not exist:
+
+    ```csharp
+    if (workbook.TryGetWorksheet("Optional", out IXLWorksheet ws))
+    {
+        Console.WriteLine($"Found sheet with {ws.RowsUsed().Count()} used rows.");
+    }
+    else
+    {
+        Console.WriteLine("Sheet does not exist.");
+    }
+    ```
+  </Accordion>
+  <Accordion title="Iterate all worksheets">
+    Loop over every worksheet in the workbook:
+
+    ```csharp
+    foreach (IXLWorksheet ws in workbook.Worksheets)
+    {
+        Console.WriteLine($"Sheet: {ws.Name}, Position: {ws.Position}");
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Workbook properties
+
+### Document metadata
+
+The `Properties` object (`XLWorkbookProperties`) stores document metadata that appears in the file's **Info** panel in Excel:
+
+```csharp
+using var workbook = new XLWorkbook();
+
+workbook.Properties.Author = "Jane Smith";
+workbook.Properties.Title = "Annual Sales Report";
+workbook.Properties.Subject = "Sales Data";
+workbook.Properties.Company = "Acme Corp";
+workbook.Properties.Category = "Finance";
+workbook.Properties.Keywords = "sales, quarterly, 2025";
+workbook.Properties.Comments = "Generated automatically by the reporting pipeline.";
+workbook.Properties.Manager = "John Doe";
+
+workbook.SaveAs("report.xlsx");
+```
+
+### Calculation mode
+
+`CalculateMode` controls when Excel recalculates formulas when the workbook is opened in Excel. ClosedXML itself uses this only for saving the setting; it does not gate its own formula evaluation engine.
+
+| Value | Description |
+|-------|-------------|
+| `Auto` | Excel recalculates automatically when cell values change (default). |
+| `AutoNoTable` | Auto-recalculate, but exclude data tables. |
+| `Manual` | Excel only recalculates when explicitly triggered by the user. |
+| `Default` | Falls back to Excel's application-level default. |
+
+```csharp
+using var workbook = new XLWorkbook();
+
+// Disable auto-recalculation in Excel for large workbooks
+workbook.CalculateMode = XLCalculateMode.Manual;
+
+workbook.AddWorksheet("Data").Cell("A1").FormulaA1 = "=SUM(B1:B100)";
+workbook.SaveAs("large.xlsx");
+```
+
+### Other workbook-level settings
+
+```csharp
+using var workbook = new XLWorkbook();
+
+// Use 1904 date system (common for files originating from macOS Excel)
+workbook.Use1904DateSystem = true;
+
+// Set default column width and row height for all new worksheets
+workbook.ColumnWidth = 12;
+workbook.RowHeight = 18;
+
+// Right-to-left reading order
+workbook.RightToLeft = true;
+
+workbook.SaveAs("settings.xlsx");
+```
+
+---
+
+## Worksheet properties
+
+### Visibility
+
+Worksheets can be visible, hidden, or very hidden. Very hidden sheets cannot be unhidden through Excel's UI — only programmatically.
+
+```csharp
+// Hide a worksheet
+workbook.Worksheet("Internal").Visibility = XLWorksheetVisibility.Hidden;
+
+// Make it very hidden (not accessible from Excel's UI)
+workbook.Worksheet("Secrets").Visibility = XLWorksheetVisibility.VeryHidden;
+
+// Unhide
+workbook.Worksheet("Internal").Unhide();
+```
+
+### Tab color
+
+```csharp
+IXLWorksheet ws = workbook.Worksheet("Summary");
+ws.TabColor = XLColor.FromHtml("#4F81BD");
+```
+
+### Display options
+
+```csharp
+IXLWorksheet ws = workbook.Worksheet("Report");
+
+ws.ShowGridLines = false;
+ws.ShowRowColHeaders = true;
+ws.ShowZeros = false;     // Hide cells that contain zero
+ws.ShowFormulas = false;
+```

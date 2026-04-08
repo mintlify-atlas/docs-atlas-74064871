@@ -1,0 +1,282 @@
+---
+title: "Cells and ranges"
+description: "Access cells by address or index, work with ranges, rows, columns, and perform operations like merging, copying, and finding used cells."
+---
+
+## Accessing cells
+
+### By A1 notation
+
+Use a string address to access a cell by its column letter and row number.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Access a cell by A1 notation
+IXLCell cell = ws.Cell("B3");
+cell.Value = "Hello";
+
+// Access via the worksheet Range method
+IXLRange range = ws.Range("A1:C5");
+```
+
+### By row and column index
+
+Row and column indices are 1-based.
+
+```csharp
+// Access cell at row 2, column 3 (C2)
+IXLCell cell = ws.Cell(2, 3);
+cell.Value = 42;
+
+// Column can also be a letter string
+IXLCell sameCell = ws.Cell(2, "C");
+```
+
+### Navigation helpers
+
+`IXLCell` provides methods to move to adjacent cells relative to the current cell.
+
+```csharp
+IXLCell a1 = ws.Cell("A1");
+IXLCell b1 = a1.CellRight();       // one cell to the right
+IXLCell a2 = a1.CellBelow();       // one cell below
+IXLCell b3 = a1.CellRight(1).CellBelow(2); // offset by steps
+```
+
+## Cell values and data types
+
+Set a cell's value through the `Value` property or the fluent `SetValue` method.
+
+```csharp
+ws.Cell("A1").Value = "Name";
+ws.Cell("A2").Value = 3.14;
+ws.Cell("A3").Value = new DateTime(2024, 1, 15);
+ws.Cell("A4").Value = true;
+
+// Fluent form — returns the cell for chaining
+ws.Cell("B1").SetValue("Quantity");
+```
+
+Read a value back using typed getters.
+
+```csharp
+string text   = ws.Cell("A1").GetString();
+double number = ws.Cell("A2").GetDouble();
+DateTime dt   = ws.Cell("A3").GetDateTime();
+bool flag     = ws.Cell("A4").GetBoolean();
+
+// Generic conversion
+if (ws.Cell("A2").TryGetValue<int>(out int qty))
+    Console.WriteLine(qty);
+```
+
+The cell's data type is exposed through `IXLCell.DataType`, which returns an `XLDataType` enum value (`Blank`, `Boolean`, `Number`, `Text`, `Error`, `DateTime`, or `TimeSpan`).
+
+## Formulas
+
+Assign a formula using `FormulaA1` (A1-style references) or `FormulaR1C1` (R1C1-style).
+
+```csharp
+ws.Cell("A1").Value = 10;
+ws.Cell("A2").Value = 20;
+
+// Formula without leading '='
+ws.Cell("A3").FormulaA1 = "A1 + A2";
+
+// R1C1-style
+ws.Cell("B3").FormulaR1C1 = "RC[-1] * 2";
+
+// Fluent setters
+ws.Cell("C3").SetFormulaA1("SUM(A1:A2)");
+```
+
+## Working with ranges
+
+### Selecting ranges
+
+A range represents a rectangular block of cells. Ranges implement `IXLRange`.
+
+```csharp
+// By address string
+IXLRange r1 = ws.Range("A1:D10");
+
+// By two corner addresses
+IXLRange r2 = ws.Range("A1", "D10");
+
+// By row/column indices (first row, first col, last row, last col)
+IXLRange r3 = ws.Range(1, 1, 10, 4);
+
+// Sub-range relative to an existing range
+IXLRange sub = r1.Range("B2:C3");
+```
+
+### Setting values across a range
+
+```csharp
+// Set the same value in every cell of the range
+ws.Range("B2:D5").Value = 0;
+
+// Set a formula in every cell
+ws.Range("E2:E5").FormulaA1 = "B2 + C2 + D2";
+```
+
+### Rows and columns
+
+Retrieve rows and columns from a range or worksheet.
+
+```csharp
+// Worksheet rows and columns (worksheet-scoped)
+IXLRow    row3  = ws.Row(3);
+IXLColumn colB  = ws.Column("B");
+IXLColumn col2  = ws.Column(2);
+
+// Range-scoped rows and columns (relative indices)
+IXLRangeRow    firstRow  = ws.Range("A1:D5").FirstRow();
+IXLRangeColumn firstCol  = ws.Range("A1:D5").FirstColumn();
+IXLRangeRow    row       = ws.Range("A1:D5").Row(2);   // second row of range
+IXLRangeColumn col       = ws.Range("A1:D5").Column(3); // third column of range
+
+// Iterate all rows in a range
+foreach (IXLRangeRow r in ws.Range("A1:D5").Rows())
+{
+    foreach (IXLCell cell in r.Cells())
+        Console.Write(cell.Value + "\t");
+    Console.WriteLine();
+}
+```
+
+### Counting rows and columns
+
+```csharp
+IXLRange range = ws.Range("B2:E7");
+int rowCount = range.RowCount();    // 6
+int colCount = range.ColumnCount(); // 4
+```
+
+## Finding used cells and ranges
+
+### Worksheet-level
+
+```csharp
+// Smallest range that encloses all cells with data
+IXLRange? used = ws.RangeUsed();
+
+// First and last cell that contain a value
+IXLCell first = ws.FirstCellUsed();
+IXLCell last  = ws.LastCellUsed();
+```
+
+### Range-level
+
+```csharp
+IXLRange range = ws.Range("A1:Z100");
+
+// All cells that have values within the range
+IXLCells usedCells = range.CellsUsed();
+
+// Rows/columns that contain at least one value
+IXLRangeRows    usedRows = range.RowsUsed();
+IXLRangeColumns usedCols = range.ColumnsUsed();
+
+// Reduced range bounding all used cells
+IXLRange trimmed = range.RangeUsed();
+```
+
+<Tip>
+Use `RangeUsed()` after inserting data to get a tight reference to the populated area, which is useful when creating tables or pivot tables from dynamic data.
+</Tip>
+
+## Copying and moving ranges
+
+Copy the content of one range to a target cell (top-left anchor).
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+ws.Cell("A1").Value = "Source";
+ws.Cell("A2").Value = 100;
+ws.Cell("B1").Value = "Data";
+ws.Cell("B2").Value = 200;
+
+// Copy range A1:B2 so that it starts at D5
+ws.Range("A1:B2").CopyTo(ws.Cell("D5"));
+
+// Copy a single cell
+ws.Cell("A2").CopyTo(ws.Cell("F1"));
+```
+
+You can also copy cells from another cell or range into the current cell:
+
+```csharp
+ws.Cell("G1").CopyFrom(ws.Cell("A1"));
+ws.Cell("G2").CopyFrom(ws.Range("A1:B2"));
+```
+
+## Merging and unmerging cells
+
+Merging combines multiple cells into one. Only the top-left cell retains its value.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+ws.Cell("A1").Value = "Merged header";
+
+// Merge a range
+ws.Range("A1:D1").Merge();
+
+// Check whether a cell is part of a merged region
+bool merged = ws.Cell("B1").IsMerged();      // true
+IXLRange mergedRange = ws.Cell("B1").MergedRange(); // returns A1:D1
+
+// Unmerge
+ws.Range("A1:D1").Unmerge();
+```
+
+<Warning>
+Merging clears the values of all cells except the top-left cell. Make sure you set the value you want to keep before merging.
+</Warning>
+
+## Inserting and deleting rows and columns
+
+```csharp
+// Insert 2 rows above range A3:D3
+ws.Range("A3:D3").InsertRowsAbove(2);
+
+// Insert 1 column after range D1:D10
+ws.Range("D1:D10").InsertColumnsAfter(1);
+
+// Delete a range and shift remaining cells up
+ws.Range("A3:D3").Delete(XLShiftDeletedCells.ShiftCellsUp);
+```
+
+## Sorting ranges
+
+```csharp
+// Sort by first column ascending (default)
+ws.Range("A1:C10").Sort();
+
+// Sort by second column descending, then first column ascending
+ws.Range("A1:C10").Sort("2 DESC, 1");
+
+// Sort by column index
+ws.Range("A1:C10").Sort(2, XLSortOrder.Descending);
+```
+
+## Named ranges
+
+Create a named range (defined name) to reference a cell or range symbolically.
+
+```csharp
+// Name a single cell
+ws.Cell("A1").AddToNamed("UnitPrice");
+
+// Name a range with workbook scope
+ws.Range("A1:B10").AddToNamed("SalesData", XLScope.Workbook);
+
+// Name with worksheet scope and a comment
+ws.Range("D1:D10").AddToNamed("Discounts", XLScope.Worksheet, "Monthly discount rates");
+```

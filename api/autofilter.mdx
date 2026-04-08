@@ -1,0 +1,447 @@
+---
+title: "IXLAutoFilter"
+description: "API reference for AutoFilter — sorting and filtering rows in ranges and tables in ClosedXML."
+---
+
+## Overview
+
+`IXLAutoFilter` manages the sort and filter state for a contiguous area of a worksheet or a table. The first row of the area is treated as a header row and is never sorted or filtered. Rows that do not satisfy filter conditions are hidden.
+
+**Constraints:**
+- Each worksheet may have at most one range-level autofilter.
+- Each table has its own autofilter (totals row is excluded from filtering).
+- Sorting can operate on only one column at a time.
+
+---
+
+## Getting or setting an autofilter
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Range autofilter
+var range = ws.Cell("A1").InsertData(new object[][]
+{
+    new object[] { "Pastry",    "Sold", "Margin" },
+    new object[] { "Cake",      14,     0.25 },
+    new object[] { "Croissant", 15,     0.60 },
+    new object[] { "Waffle",    74,     0.60 },
+});
+IXLAutoFilter af = range.SetAutoFilter();
+
+// Table autofilter
+var table = ws.Range("D1:F5").CreateTable();
+IXLAutoFilter tableAf = table.SetAutoFilter();
+
+// Access autofilter from a worksheet
+IXLAutoFilter wsAf = ws.AutoFilter;
+
+// Disable by setting property
+af.IsEnabled = false;
+
+// Or remove the autofilter entirely (hides arrows, unhides all rows)
+af.Clear();
+```
+
+---
+
+## IXLAutoFilter properties
+
+### IsEnabled
+
+```csharp
+Boolean IsEnabled { get; set; }
+```
+
+When `true`, the dropdown arrows are displayed and active filters are applied. Setting to `false` removes the arrows and unhides all rows without clearing filter configuration.
+
+---
+
+### Range
+
+```csharp
+IXLRange Range { get; }
+```
+
+The full range of the autofilter (header row + data rows). Does not include a table's totals row.
+
+---
+
+### Sorted
+
+```csharp
+Boolean Sorted { get; }
+```
+
+`true` if `Sort()` has been called at least once or sort state was loaded from a file.
+
+---
+
+### SortColumn
+
+```csharp
+Int32 SortColumn { get; }
+```
+
+The 1-based column number within the range that was used for the last sort. Value is undefined when `Sorted` is `false`.
+
+---
+
+### SortOrder
+
+```csharp
+XLSortOrder SortOrder { get; }
+```
+
+The sort order (`Ascending` or `Descending`) used in the last sort. Value is undefined when `Sorted` is `false`.
+
+---
+
+### HiddenRows / VisibleRows
+
+```csharp
+IEnumerable<IXLRangeRow> HiddenRows { get; }
+IEnumerable<IXLRangeRow> VisibleRows { get; }
+```
+
+Rows of `Range` that were hidden (or shown) by the last filter application. Does not include the header row.
+
+---
+
+## IXLAutoFilter methods
+
+### Sort
+
+```csharp
+IXLAutoFilter Sort(
+    Int32 columnToSortBy = 1,
+    XLSortOrder sortOrder = XLSortOrder.Ascending,
+    Boolean matchCase = false,
+    Boolean ignoreBlanks = true);
+```
+
+Sorts the data rows using values from one column. Updates `Sorted`, `SortColumn`, and `SortOrder`.
+
+<ParamField body="columnToSortBy" type="Int32" default="1">
+  Column number within the range (1 = leftmost column of the range).
+</ParamField>
+<ParamField body="sortOrder" type="XLSortOrder" default="Ascending">
+  `Ascending` or `Descending`.
+</ParamField>
+<ParamField body="matchCase" type="Boolean" default="false">
+  Case-sensitive matching for text values.
+</ParamField>
+<ParamField body="ignoreBlanks" type="Boolean" default="true">
+  When `true`, blank cells sort to the end regardless of order.
+</ParamField>
+
+```csharp
+// Sort by the 3rd column descending
+range.SetAutoFilter().Sort(3, XLSortOrder.Descending);
+```
+
+---
+
+### Column
+
+```csharp
+IXLFilterColumn Column(String columnLetter);
+IXLFilterColumn Column(Int32 columnNumber);
+```
+
+Returns the filter configuration for a specific column in the range.
+
+<ParamField body="columnLetter" type="String">
+  Letter relative to the autofilter range (e.g. `"A"` for the first column of the range).
+</ParamField>
+<ParamField body="columnNumber" type="Int32">
+  1-based column index within the range.
+</ParamField>
+
+**Throws** `ArgumentOutOfRangeException` for an invalid column reference.
+
+---
+
+### Reapply
+
+```csharp
+IXLAutoFilter Reapply();
+```
+
+Re-evaluates all filter conditions and updates row visibility. Filters are automatically reapplied when filter configuration changes, but this method is useful after modifying cell values or worksheet structure.
+
+---
+
+### Clear
+
+```csharp
+IXLAutoFilter Clear();
+```
+
+Disables the autofilter, removes all column filters, and unhides all rows.
+
+---
+
+## IXLFilterColumn
+
+Configures the filter for one column in the autofilter range. A column can only hold one filter type at a time; switching type clears any existing filter.
+
+### FilterType (read-only)
+
+```csharp
+XLFilterType FilterType { get; }
+```
+
+The active filter type: `None`, `Regular`, `Custom`, `TopBottom`, or `Dynamic`.
+
+---
+
+### Clear
+
+```csharp
+void Clear(bool reapply = true);
+```
+
+Removes all filters from this column. Keeps the autofilter enabled.
+
+---
+
+## Regular filters
+
+A regular filter shows rows whose cell value matches any value in a set of allowed values.
+
+### AddFilter
+
+```csharp
+IXLFilteredColumn AddFilter(XLCellValue value, bool reapply = true);
+```
+
+Adds `value` to the allowed set. The value is converted to a locale-specific formatted string; comparison is against `IXLCell.GetFormattedString()`.
+
+Returns `IXLFilteredColumn` for chaining further `AddFilter` or `AddDateGroupFilter` calls.
+
+---
+
+### AddDateGroupFilter
+
+```csharp
+IXLFilteredColumn AddDateGroupFilter(
+    DateTime date,
+    XLDateTimeGrouping dateTimeGrouping,
+    bool reapply = true);
+```
+
+Adds a date-range filter. Rows whose date-time cell value falls within the period defined by `dateTimeGrouping` (starting from `date`) satisfy the filter.
+
+| `dateTimeGrouping` | Matched range |
+|---|---|
+| `Year` | All dates in the year of `date` |
+| `Month` | All dates in the month of `date` |
+| `Day` | All dates on the day of `date` |
+| `Hour` | All date-times in the hour of `date` |
+| `Minute` | All date-times in the minute of `date` |
+| `Second` | All date-times in the second of `date` |
+
+```csharp
+// Show all rows with dates in January 2020
+range.SetAutoFilter().Column(1)
+    .AddFilter("Text", reapply: false)
+    .AddDateGroupFilter(new DateTime(2020, 1, 1), XLDateTimeGrouping.Month);
+```
+
+---
+
+## Custom filters (comparison)
+
+Custom filters compare a cell value against a filter value using a comparison operator. Only cells whose value type matches the filter value type satisfy the filter. Blanks never satisfy custom filters.
+
+All methods return `IXLFilterConnector` that exposes `.And` and `.Or` for chaining a second condition.
+
+```csharp
+IXLFilterConnector EqualTo(XLCellValue value, bool reapply = true);
+IXLFilterConnector NotEqualTo(XLCellValue value, bool reapply = true);
+IXLFilterConnector GreaterThan(XLCellValue value, bool reapply = true);
+IXLFilterConnector LessThan(XLCellValue value, bool reapply = true);
+IXLFilterConnector EqualOrGreaterThan(XLCellValue value, bool reapply = true);
+IXLFilterConnector EqualOrLessThan(XLCellValue value, bool reapply = true);
+```
+
+Convenience range methods (combine two conditions with `And`):
+
+```csharp
+void Between(XLCellValue minValue, XLCellValue maxValue, bool reapply = true);
+void NotBetween(XLCellValue minValue, XLCellValue maxValue, bool reapply = true);
+```
+
+### Chaining with And / Or
+
+```csharp
+// Show grades greater than "C" AND not equal to "N/A"
+range.SetAutoFilter().Column(1)
+    .GreaterThan("C", reapply: false)
+    .And
+    .NotEqualTo("N/A");
+```
+
+### Example
+
+```csharp
+// Show numbers <= 5
+autoFilter.Column(1).EqualOrLessThan(5);
+
+// Show numbers between 10 and 50
+autoFilter.Column(2).Between(10, 50);
+```
+
+---
+
+## Custom filters (text patterns)
+
+When a text value is passed to `EqualTo`/`NotEqualTo`, wildcard matching is used (`*` = any characters, `?` = single character, `~` = escape). Convenience methods:
+
+```csharp
+IXLFilterConnector BeginsWith(String value, bool reapply = true);
+IXLFilterConnector NotBeginsWith(String value, bool reapply = true);
+IXLFilterConnector EndsWith(String value, bool reapply = true);
+IXLFilterConnector NotEndsWith(String value, bool reapply = true);
+IXLFilterConnector Contains(String value, bool reapply = true);
+IXLFilterConnector NotContains(String value, bool reapply = true);
+```
+
+```csharp
+// Show only rows where column A starts with "CZ"
+range.SetAutoFilter().Column(1).BeginsWith("CZ");
+```
+
+---
+
+## Top/Bottom filters
+
+Display the top or bottom N items (or N percent) of a column. At most 500 items are supported.
+
+```csharp
+void Top(Int32 value, XLTopBottomType type = XLTopBottomType.Items, bool reapply = true);
+void Bottom(Int32 value, XLTopBottomType type = XLTopBottomType.Items, bool reapply = true);
+```
+
+<ParamField body="value" type="Int32">
+  Number of items or percent. Range: 1–500.
+</ParamField>
+<ParamField body="type" type="XLTopBottomType">
+  `Items` (absolute count) or `Percent` (percentage of data row count).
+</ParamField>
+
+**Throws** `ArgumentOutOfRangeException` if `value` is outside 1–500.
+
+When `FilterType == XLFilterType.TopBottom`, state is readable from:
+
+```csharp
+Int32 TopBottomValue { get; }
+XLTopBottomType TopBottomType { get; }
+XLTopBottomPart TopBottomPart { get; }  // Top or Bottom
+```
+
+```csharp
+// Show top 10 items
+autoFilter.Column(1).Top(10);
+
+// Show bottom 25%
+autoFilter.Column(2).Bottom(25, XLTopBottomType.Percent);
+```
+
+---
+
+## Dynamic filters
+
+Dynamic filters compute their threshold from the data itself.
+
+```csharp
+void AboveAverage(bool reapply = true);
+void BelowAverage(bool reapply = true);
+```
+
+When `FilterType == XLFilterType.Dynamic`, state is readable from:
+
+```csharp
+XLFilterDynamicType DynamicType { get; }  // AboveAverage or BelowAverage
+Double DynamicValue { get; }              // The computed average
+```
+
+```csharp
+// Show rows with values strictly above average
+autoFilter.Column(1).AboveAverage();
+```
+
+---
+
+## Enumerations
+
+### XLFilterType
+
+| Value | Description |
+|---|---|
+| `None` | No filter is active on this column. |
+| `Regular` | Value-list or date-group filter. |
+| `Custom` | Comparison-based filter (up to two conditions). |
+| `TopBottom` | Top/bottom N items or percent. |
+| `Dynamic` | Data-driven filter (e.g. above/below average). |
+
+### XLTopBottomType
+
+| Value | Description |
+|---|---|
+| `Items` | The value specifies an absolute count of rows to show. |
+| `Percent` | The value specifies a percentage of data rows to show. |
+
+### XLTopBottomPart
+
+| Value | Description |
+|---|---|
+| `Top` | Show the top values. |
+| `Bottom` | Show the bottom values. |
+
+### XLFilterDynamicType
+
+| Value | Description |
+|---|---|
+| `AboveAverage` | Show values strictly above the column average. |
+| `BelowAverage` | Show values strictly below the column average. |
+
+### XLDateTimeGrouping
+
+`Year`, `Month`, `Day`, `Hour`, `Minute`, `Second`
+
+---
+
+## Full example
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+var table = ws.Cell("B3").InsertTable(new[]
+{
+    new Pastry("Cake",    39.0, 3),
+    new Pastry("Waffles", 15.0, 12),
+    new Pastry("Pie",     19.0, 27),
+});
+
+table.ShowAutoFilter = true;
+
+// Enable the autofilter and sort by first column descending
+var af = table.SetAutoFilter();
+af.IsEnabled = true;
+af.Sort(1, XLSortOrder.Descending);
+
+// Show only rows where Sold > 10
+af.Column(3).GreaterThan(10);
+
+wb.SaveAs("autofilter.xlsx");
+
+record Pastry(string Name, double UnitPrice, int Sold);
+```

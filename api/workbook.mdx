@@ -1,0 +1,300 @@
+---
+title: "XLWorkbook"
+description: "The root object for creating, loading, and saving Excel workbooks (.xlsx, .xlsm). Implements IXLWorkbook."
+---
+
+`XLWorkbook` is the entry point for all ClosedXML operations. You create or load a workbook, manipulate worksheets and cells, then save the result.
+
+## Constructors
+
+```csharp
+// New empty workbook
+var wb = new XLWorkbook();
+
+// Load from file path
+var wb = new XLWorkbook("report.xlsx");
+
+// Load from stream
+var wb = new XLWorkbook(stream);
+
+// Load with options
+var options = new LoadOptions { RecalculateAllFormulas = true };
+var wb = new XLWorkbook(options);
+```
+
+<Note>
+  `XLWorkbook` implements `IDisposable`. Always wrap it in a `using` statement or call `Dispose()` explicitly.
+</Note>
+
+## LoadOptions
+
+Control how a workbook is loaded by passing a `LoadOptions` instance to the constructor.
+
+<ParamField body="RecalculateAllFormulas" type="bool" default="false">
+  Recalculate all formulas when the workbook is loaded.
+</ParamField>
+
+<ParamField body="GraphicEngine" type="IXLGraphicEngine">
+  The graphics engine used for this workbook. Falls back to `LoadOptions.DefaultGraphicEngine` when not set.
+</ParamField>
+
+<ParamField body="Dpi" type="System.Drawing.Point" default="96, 96">
+  DPI used for image sizing and text measurement. Must be positive on both axes.
+</ParamField>
+
+<ParamField body="StrictAttributeParsing" type="bool" default="true">
+  When `true`, the XML parser throws on invalid attribute values. Set to `false` to tolerate malformed OOXML.
+</ParamField>
+
+<ParamField body="CancellationToken" type="CancellationToken">
+  Token to cancel formula recalculation triggered during load.
+</ParamField>
+
+## SaveOptions
+
+Control how a workbook is saved by passing a `SaveOptions` instance to `Save` or `SaveAs`.
+
+<ParamField body="EvaluateFormulasBeforeSaving" type="bool" default="false">
+  When `true`, formula cells are evaluated and the calculated values are written to the file. Evaluation errors are silently skipped.
+</ParamField>
+
+<ParamField body="ValidatePackage" type="bool" default="true (Debug) / false (Release)">
+  Validate the OOXML package after writing.
+</ParamField>
+
+<ParamField body="GenerateCalculationChain" type="bool" default="true">
+  Write the calculation chain part to the package.
+</ParamField>
+
+<ParamField body="ConsolidateConditionalFormatRanges" type="bool" default="true">
+  Merge adjacent conditional format ranges before saving to reduce file size.
+</ParamField>
+
+<ParamField body="ConsolidateDataValidationRanges" type="bool" default="true">
+  Merge adjacent data validation ranges before saving to reduce file size.
+</ParamField>
+
+<ParamField body="FilterPrivacy" type="bool?">
+  Sets the `filterPrivacy` flag in the saved workbook. Pass `null` to leave the existing value unchanged.
+</ParamField>
+
+## Properties
+
+### Worksheets and structure
+
+| Property | Type | Description |
+|---|---|---|
+| `Worksheets` | `IXLWorksheets` | Collection of all worksheets in the workbook. |
+| `DefinedNames` | `IXLDefinedNames` | Workbook-scoped defined names (named ranges). |
+| `CustomProperties` | `IXLCustomProperties` | Custom document properties. |
+| `Theme` | `IXLTheme` | Workbook color theme. |
+| `PivotCaches` | `IXLPivotCaches` | All pivot caches. Unused caches are not saved. |
+
+### Defaults for new worksheets
+
+| Property | Type | Description |
+|---|---|---|
+| `ColumnWidth` | `double` | Default column width applied to new worksheets. |
+| `RowHeight` | `double` | Default row height applied to new worksheets. |
+| `Style` | `IXLStyle` | Default cell style for new worksheets. |
+| `PageOptions` | `IXLPageSetup` | Default page setup for new worksheets. |
+| `Outline` | `IXLOutline` | Default outline settings for new worksheets. |
+
+### Workbook metadata
+
+| Property | Type | Description |
+|---|---|---|
+| `Author` | `string` | Workbook author string. |
+| `Properties` | `XLWorkbookProperties` | Core document properties (title, subject, company, etc.). |
+| `ReferenceStyle` | `XLReferenceStyle` | `A1`, `R1C1`, or `Default`. |
+| `Use1904DateSystem` | `bool` | Use the 1904 date system instead of 1900. |
+
+### Calculation
+
+| Property | Type | Description |
+|---|---|---|
+| `CalculateMode` | `XLCalculateMode` | `Auto`, `AutoNoTable`, `Manual`, or `Default`. |
+| `CalculationOnSave` | `bool` | Recalculate before saving. |
+| `ForceFullCalculation` | `bool` | Force a full recalculation on load. |
+| `FullCalculationOnLoad` | `bool` | Recalculate all cells on load. |
+| `FullPrecision` | `bool` | Store and use full precision values. |
+
+### Display settings
+
+| Property | Type | Description |
+|---|---|---|
+| `ShowFormulas` | `bool` | Show formulas instead of values in cells. |
+| `ShowGridLines` | `bool` | Display grid lines. |
+| `ShowRowColHeaders` | `bool` | Display row and column headers. |
+| `ShowRuler` | `bool` | Display the ruler in page layout view. |
+| `ShowWhiteSpace` | `bool` | Display white space in page layout view. |
+| `ShowZeros` | `bool` | Display zero values in cells. |
+| `RightToLeft` | `bool` | Display worksheets right-to-left. |
+
+## Methods
+
+### Adding worksheets
+
+```csharp
+IXLWorksheet AddWorksheet()
+IXLWorksheet AddWorksheet(int position)
+IXLWorksheet AddWorksheet(string sheetName)
+IXLWorksheet AddWorksheet(string sheetName, int position)
+void AddWorksheet(DataSet dataSet)
+void AddWorksheet(IXLWorksheet worksheet)
+IXLWorksheet AddWorksheet(DataTable dataTable)
+IXLWorksheet AddWorksheet(DataTable dataTable, string sheetName)
+IXLWorksheet AddWorksheet(DataTable dataTable, string sheetName, string tableName)
+```
+
+When adding from a `DataTable`, ClosedXML inserts the data as an Excel table at cell `A1` using the sheet name as the table name (unless you supply one explicitly).
+
+### Accessing worksheets
+
+```csharp
+IXLWorksheet Worksheet(string name)
+IXLWorksheet Worksheet(int position)
+bool TryGetWorksheet(string name, out IXLWorksheet worksheet)
+```
+
+<ParamField body="name" type="string">
+  Sheet name. Lookup is case-insensitive.
+</ParamField>
+
+<ParamField body="position" type="int">
+  1-based sheet position.
+</ParamField>
+
+### Saving
+
+```csharp
+void Save()
+void Save(bool validate, bool evaluateFormulae = false)
+void Save(SaveOptions options)
+
+void SaveAs(string file)
+void SaveAs(string file, bool validate, bool evaluateFormulae = false)
+void SaveAs(string file, SaveOptions options)
+
+void SaveAs(Stream stream)
+void SaveAs(Stream stream, bool validate, bool evaluateFormulae = false)
+void SaveAs(Stream stream, SaveOptions options)
+```
+
+`Save()` overwrites the file the workbook was loaded from. Call `SaveAs` for new paths or streams.
+
+### Formulas
+
+```csharp
+XLCellValue Evaluate(string expression)
+void RecalculateAllFormulas()
+```
+
+`Evaluate` computes a formula expression at workbook scope. Use `worksheet.Evaluate(expression, formulaAddress)` when the formula requires cell context.
+
+### Searching
+
+```csharp
+IEnumerable<IXLCell> Search(string searchText,
+    CompareOptions compareOptions = CompareOptions.Ordinal,
+    bool searchFormulae = false)
+
+IXLCells FindCells(Func<IXLCell, bool> predicate)
+IXLRows FindRows(Func<IXLRow, bool> predicate)
+IXLColumns FindColumns(Func<IXLColumn, bool> predicate)
+```
+
+### Tables and defined names
+
+```csharp
+IXLTable Table(string tableName,
+    StringComparison comparisonType = StringComparison.OrdinalIgnoreCase)
+
+IXLDefinedName? DefinedName(string name)
+IXLRange Range(string range)
+IXLRanges Ranges(string ranges)
+```
+
+## Code examples
+
+### Create and save a workbook
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Sales");
+
+ws.Cell("A1").Value = "Product";
+ws.Cell("B1").Value = "Revenue";
+ws.Cell("A2").Value = "Widget";
+ws.Cell("B2").Value = 12500.00;
+
+wb.SaveAs("sales.xlsx");
+```
+
+### Load an existing file and modify it
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook("report.xlsx");
+var ws = wb.Worksheet("Summary");
+ws.Cell("A1").Value = "Updated";
+wb.Save();
+```
+
+### Load from a stream
+
+```csharp
+using ClosedXML.Excel;
+
+using var stream = File.OpenRead("data.xlsx");
+using var wb = new XLWorkbook(stream);
+// workbook is fully loaded; stream can be closed
+```
+
+### Save with formula evaluation
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook("report.xlsx");
+var options = new SaveOptions { EvaluateFormulasBeforeSaving = true };
+wb.SaveAs("report-calculated.xlsx", options);
+```
+
+### Add a worksheet from a DataTable
+
+```csharp
+using ClosedXML.Excel;
+using System.Data;
+
+var dt = new DataTable("Products");
+dt.Columns.Add("Name");
+dt.Columns.Add("Price", typeof(decimal));
+dt.Rows.Add("Widget", 9.99m);
+
+using var wb = new XLWorkbook();
+wb.AddWorksheet(dt);           // sheet name = "Products"
+wb.SaveAs("products.xlsx");
+```
+
+### Evaluate a formula at workbook scope
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var result = wb.Evaluate("2 + 2 * 3"); // XLCellValue with Number 8
+```
+
+### Open a template without saving over it
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = XLWorkbook.OpenFromTemplate("template.xltx");
+wb.Worksheet(1).Cell("B2").Value = DateTime.Today;
+wb.SaveAs("output.xlsx");
+```

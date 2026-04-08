@@ -1,0 +1,429 @@
+---
+title: "IXLCell"
+description: "Represents a single cell in a worksheet. Provides access to values, formulas, styles, and data insertion."
+---
+
+`IXLCell` is the fundamental unit for reading and writing data. You obtain a cell reference from a worksheet or range, then read or write its value, formula, and style.
+
+## Accessing cells
+
+```csharp
+// From a worksheet — by address string
+IXLCell cell = ws.Cell("B3");
+
+// From a worksheet — by row and column numbers (1-based)
+IXLCell cell = ws.Cell(3, 2);
+
+// From a worksheet — by row number and column letter
+IXLCell cell = ws.Cell(3, "B");
+
+// From a range — address is relative to the range origin
+IXLCell cell = range.Cell(1, 1);
+IXLCell cell = range.Cell("A1");
+
+// Navigate from a cell
+IXLCell below = cell.CellBelow();
+IXLCell below = cell.CellBelow(3);   // 3 rows below
+IXLCell right = cell.CellRight();
+IXLCell above = cell.CellAbove();
+IXLCell left  = cell.CellLeft();
+```
+
+## Value and data type
+
+### XLCellValue
+
+`XLCellValue` is a readonly value struct that holds one of seven possible types:
+
+| Type | CLR equivalent | `XLDataType` member |
+|---|---|---|
+| Blank | — | `Blank` |
+| Boolean | `bool` | `Boolean` |
+| Number | `double` | `Number` |
+| Text | `string` (max 32 767 chars) | `Text` |
+| Error | `XLError` | `Error` |
+| DateTime | `DateTime` (serial) | `DateTime` |
+| TimeSpan | `TimeSpan` (serial) | `TimeSpan` |
+
+`XLCellValue` has implicit conversion operators from all common numeric types, `bool`, `string`, `DateTime`, `TimeSpan`, `XLError`, and `Blank`. Nullable variants map to `Blank` when `null`.
+
+```csharp
+// Reading
+XLCellValue v = cell.Value;        // evaluates formula if needed
+XLCellValue v = cell.CachedValue;  // returns last calculated value without re-evaluating
+
+Console.WriteLine(v.Type);         // XLDataType
+Console.WriteLine(v.IsText);       // true / false
+Console.WriteLine(v.IsNumber);
+
+// Writing — implicit conversion from common types
+cell.Value = "Hello";
+cell.Value = 42;
+cell.Value = 3.14;
+cell.Value = true;
+cell.Value = DateTime.Today;
+cell.Value = TimeSpan.FromHours(1.5);
+cell.Value = Blank.Value;          // clear value
+```
+
+### DataType property
+
+```csharp
+XLDataType dt = cell.DataType;
+// XLDataType.Blank | Boolean | Number | Text | Error | DateTime | TimeSpan
+```
+
+## Reading values
+
+### Type-specific getters
+
+Use these when you know the exact type stored in the cell. They throw `InvalidCastException` on a type mismatch.
+
+```csharp
+bool    b  = cell.GetBoolean();
+double  d  = cell.GetDouble();
+string  s  = cell.GetText();
+XLError e  = cell.GetError();
+DateTime dt = cell.GetDateTime();
+TimeSpan ts = cell.GetTimeSpan();
+```
+
+### Generic accessor
+
+`GetValue<T>` converts the cell value to the requested type using flexible coercion rules.
+
+```csharp
+T GetValue<T>()
+bool TryGetValue<T>(out T value)
+```
+
+Supported types for `T`:
+
+- `bool` — coerces from number (0 = false) and text (`"TRUE"`/`"FALSE"`)
+- Numeric types (`sbyte`, `byte`, `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `float`, `double`, `decimal`)
+- `string` — text representation using current culture
+- `DateTime`
+- `TimeSpan`
+- `XLError`
+- Enums — matched by name against cell text
+
+Nullable value types return `null` when the cell is blank.
+
+```csharp
+// Safe read with TryGetValue
+if (cell.TryGetValue<decimal>(out var price))
+    Console.WriteLine($"Price: {price:C}");
+
+// Direct read — throws if conversion fails
+int qty = cell.GetValue<int>();
+```
+
+### String representations
+
+```csharp
+string raw       = cell.GetString();         // raw text, no formatting
+string formatted = cell.GetFormattedString(); // uses cell format and current culture
+string formatted = cell.GetFormattedString(CultureInfo.GetCultureInfo("de-DE"));
+```
+
+## Writing values
+
+```csharp
+// Fluent setter — returns the cell for chaining
+IXLCell cell = ws.Cell("A1").SetValue("Total");
+
+// Assignment — equivalent result
+ws.Cell("A1").Value = "Total";
+```
+
+## Formulas
+
+```csharp
+// A1-style formula (without leading =)
+cell.FormulaA1 = "SUM(B1:B10)";
+// or
+cell.SetFormulaA1("SUM(B1:B10)");
+
+// R1C1-style formula
+cell.FormulaR1C1 = "SUM(R1C2:R10C2)";
+cell.SetFormulaR1C1("SUM(R1C2:R10C2)");
+
+// Read back
+string f = cell.FormulaA1;   // returns "" if no formula
+bool hasFormula = cell.HasFormula;
+
+// Array formulas
+bool isArray = cell.HasArrayFormula;
+IXLRangeAddress arrayRef = cell.FormulaReference; // the array formula range
+
+// Recalculation
+bool dirty = cell.NeedsRecalculation;   // true = cached value is stale
+cell.InvalidateFormula();               // force re-evaluation on next access
+```
+
+## Style
+
+```csharp
+IXLStyle style = cell.Style;
+
+// Font
+style.Font.Bold = true;
+style.Font.FontSize = 14;
+style.Font.FontColor = XLColor.Red;
+
+// Fill
+style.Fill.BackgroundColor = XLColor.LightYellow;
+
+// Alignment
+style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+style.Alignment.WrapText = true;
+
+// Number format
+style.NumberFormat.Format = "#,##0.00";
+
+// Border
+style.Border.BottomBorder = XLBorderStyleValues.Thin;
+style.Border.BottomBorderColor = XLColor.Black;
+```
+
+## Boolean flags
+
+| Property | Type | Description |
+|---|---|---|
+| `HasFormula` | `bool` | Cell contains a formula. |
+| `HasArrayFormula` | `bool` | Formula is an array formula. |
+| `NeedsRecalculation` | `bool` | Cached value is stale. |
+| `HasComment` | `bool` | Cell has a comment. |
+| `HasHyperlink` | `bool` | Cell has a hyperlink. |
+| `HasRichText` | `bool` | Cell value is rich text. |
+| `HasDataValidation` | `bool` | A data validation rule is assigned. |
+| `HasSparkline` | `bool` | A sparkline is anchored to this cell. |
+| `ShareString` | `bool` | Cell text is stored in the shared strings table (default `true`). |
+| `Active` | `bool` | This cell is the active cell of the worksheet. |
+| `ShowPhonetic` | `bool` | Show phonetic (furigana) runs above the cell text. |
+
+## State checks
+
+```csharp
+bool empty  = cell.IsEmpty();
+bool empty  = cell.IsEmpty(XLCellsUsedOptions.AllContents);
+bool merged = cell.IsMerged();
+
+IXLRange mergeRegion = cell.MergedRange(); // returns the merged range, or null
+XLTableCellType type = cell.TableCellType(); // None | Header | Data | Total
+```
+
+## Address and navigation
+
+```csharp
+IXLAddress addr = cell.Address;   // row/column address relative to the worksheet
+IXLWorksheet ws = cell.Worksheet;
+
+IXLRange    rng = cell.AsRange();         // wrap the cell in a single-cell range
+IXLRange    region = cell.CurrentRegion; // contiguous non-blank region around the cell
+
+IXLRow    row = cell.WorksheetRow();
+IXLColumn col = cell.WorksheetColumn();
+```
+
+## Clearing
+
+```csharp
+// Clear everything (value, formula, style, comments, hyperlinks)
+cell.Clear();
+
+// Clear specific parts
+cell.Clear(XLClearOptions.Contents);
+cell.Clear(XLClearOptions.Formats);
+cell.Clear(XLClearOptions.Comments);
+cell.Clear(XLClearOptions.All);
+```
+
+## Inserting data
+
+### InsertData
+
+Inserts enumerable data starting at this cell and returns the range it occupies.
+
+```csharp
+IXLRange InsertData(IEnumerable data)
+IXLRange InsertData(IEnumerable data, bool transpose)
+IXLRange InsertData(DataTable dataTable)
+```
+
+```csharp
+var numbers = new[] { 1, 2, 3, 4, 5 };
+ws.Cell("A1").InsertData(numbers);             // writes down column A
+ws.Cell("A1").InsertData(numbers, transpose: true); // writes across row 1
+```
+
+### InsertTable
+
+Inserts typed or `DataTable` data as an Excel table.
+
+```csharp
+IXLTable InsertTable<T>(IEnumerable<T> data)
+IXLTable InsertTable<T>(IEnumerable<T> data, bool createTable)
+IXLTable InsertTable<T>(IEnumerable<T> data, string tableName)
+IXLTable InsertTable<T>(IEnumerable<T> data, string tableName, bool createTable)
+
+IXLTable InsertTable(DataTable data)
+IXLTable InsertTable(DataTable data, bool createTable)
+IXLTable InsertTable(DataTable data, string tableName)
+IXLTable InsertTable(DataTable data, string tableName, bool createTable)
+```
+
+Set `createTable: false` to lay out the data without registering it as an Excel table object.
+
+## Inserting and deleting cells
+
+```csharp
+// Insert blank cells, shifting surrounding cells
+IXLCells InsertCellsAbove(int numberOfRows)
+IXLCells InsertCellsBelow(int numberOfRows)
+IXLCells InsertCellsBefore(int numberOfColumns)
+IXLCells InsertCellsAfter(int numberOfColumns)
+
+// Delete this cell, shifting surrounding cells
+void Delete(XLShiftDeletedCells shiftDeleteCells)
+// XLShiftDeletedCells.ShiftCellsUp | ShiftCellsLeft
+```
+
+## Copying
+
+```csharp
+IXLCell CopyFrom(IXLCell otherCell)
+IXLCell CopyFrom(string otherCell)     // cell address string
+IXLCell CopyFrom(IXLRangeBase range)   // copy range into area starting at this cell
+
+IXLCell CopyTo(IXLCell target)
+IXLCell CopyTo(string target)
+```
+
+## Rich text, comments, and hyperlinks
+
+```csharp
+// Rich text
+bool hasRich     = cell.HasRichText;
+IXLRichText rich = cell.GetRichText();
+IXLRichText rich = cell.CreateRichText(); // replaces existing value
+
+// Comments
+bool        hasComment = cell.HasComment;
+IXLComment  comment    = cell.GetComment();
+IXLComment  comment    = cell.CreateComment();
+
+// Hyperlinks
+bool         hasLink = cell.HasHyperlink;
+XLHyperlink  link    = cell.GetHyperlink();
+XLHyperlink  link    = cell.CreateHyperlink();
+void                   cell.SetHyperlink(link);   // pass null to remove
+```
+
+## Code examples
+
+### Read and write basic values
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook("data.xlsx");
+var ws = wb.Worksheet(1);
+
+// Read
+string name  = ws.Cell("A2").GetValue<string>();
+decimal price = ws.Cell("B2").GetValue<decimal>();
+
+// Write
+ws.Cell("C2").Value = price * 1.10m;
+ws.Cell("D2").Value = DateTime.Today;
+
+wb.Save();
+```
+
+### Write a formula
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Totals");
+
+ws.Cell("A1").Value = 100;
+ws.Cell("A2").Value = 200;
+ws.Cell("A3").FormulaA1 = "SUM(A1:A2)";
+
+// Read calculated value
+double total = (double)ws.Cell("A3").Value;
+
+wb.SaveAs("totals.xlsx");
+```
+
+### Insert a typed list as an Excel table
+
+```csharp
+using ClosedXML.Excel;
+
+record Product(string Name, decimal Price, int Stock);
+
+var products = new List<Product>
+{
+    new("Widget", 9.99m, 100),
+    new("Gadget", 24.99m, 40),
+};
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Inventory");
+ws.Cell("A1").InsertTable(products, "Inventory");
+wb.SaveAs("inventory.xlsx");
+```
+
+### Apply style to a cell
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Report");
+
+var header = ws.Cell("A1");
+header.Value = "Sales Report";
+header.Style.Font.Bold = true;
+header.Style.Font.FontSize = 16;
+header.Style.Fill.BackgroundColor = XLColor.LightGray;
+header.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+wb.SaveAs("report.xlsx");
+```
+
+### Safe value reading with TryGetValue
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook("data.xlsx");
+var ws = wb.Worksheet(1);
+
+var cell = ws.Cell("B5");
+if (cell.TryGetValue<DateTime>(out var date))
+    Console.WriteLine($"Date: {date:yyyy-MM-dd}");
+else
+    Console.WriteLine("Cell does not contain a date.");
+```
+
+### Check for formula and get cached value
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook("report.xlsx");
+var ws = wb.Worksheet(1);
+var cell = ws.Cell("C10");
+
+if (cell.HasFormula)
+{
+    Console.WriteLine($"Formula: ={cell.FormulaA1}");
+    Console.WriteLine($"Cached:  {cell.CachedValue}");
+    Console.WriteLine($"Current: {cell.Value}"); // triggers recalculation if dirty
+}
+```

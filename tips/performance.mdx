@@ -1,0 +1,144 @@
+---
+title: "Performance"
+description: "Understand ClosedXML's performance characteristics and apply best practices when working with large Excel files."
+---
+
+## Benchmark data
+
+The numbers below were measured on the `develop` branch (around 0.103-beta) on:
+
+```
+BenchmarkDotNet v0.13.8, Windows 11 (10.0.22621.2283/22H2/2022Update/SunValley2)
+AMD Ryzen 5 5500U with Radeon Graphics, 1 CPU, 12 logical and 6 physical cores
+.NET SDK 8.0.100-rc.1.23463.5 — [Host]: .NET 7.0.11 (7.0.1123.42427), X64 RyuJIT AVX2
+```
+
+### Writing (save)
+
+| Workbook | Rows | Columns | Time to insert data | Time to save | Total time / memory |
+|----------|------|---------|---------------------|--------------|---------------------|
+| Mixed (text + numbers) | 250,000 | 15 | 1.619 sec / 117 MiB | 6.343 sec | **7.962 sec / 477 MiB** |
+| Text only | 1,000,000 | 10 | 6.302 sec / 402 MiB | 17.134 sec | **23.436 sec / 1,880 MiB** |
+
+### Reading (load)
+
+| Workbook | Rows | Columns | Time to load | Memory |
+|----------|------|---------|--------------|--------|
+| Mixed (10 text / 5 number columns) | 250,000 | 15 | 15.648 sec | 236 MiB |
+| Text only | 1,000,000 | 10 | 49.046 sec | 801 MiB |
+
+<Note>
+Load tests used the files produced by the save benchmarks above. Your results will vary depending on hardware, .NET version, and workbook content.
+</Note>
+
+## Key performance considerations
+
+### Avoid reading cells you don't need
+
+Every call to `worksheet.Cell("A1")` creates a proxy object backed by a sparse array. If you iterate over large ranges and access cells that contain no data, you pay allocation cost for each proxy. Prefer iterating over `worksheet.CellsUsed()` instead of all cells in a range.
+
+```csharp
+// Prefer — only visits cells that actually contain data
+foreach (var cell in worksheet.CellsUsed())
+{
+    Console.WriteLine(cell.Value);
+}
+
+// Avoid for large sheets — visits every cell in the used range, including blanks
+foreach (var row in worksheet.RowsUsed())
+{
+    foreach (var cell in row.CellsUsed())
+    {
+        Console.WriteLine(cell.Value);
+    }
+}
+```
+
+### Cell references are not stable
+
+Since 0.102, `IXLCell` is a proxy to a sparse array position, not a persistent object. `ReferenceEquals(ws.Cell("A1"), ws.Cell("A1"))` is `false`. Do not cache `IXLCell` references across operations that insert or delete rows and columns — the address the proxy points to does not update.
+
+### Font loading and `AdjustToContents`
+
+Calling `IXLColumn.AdjustToContents()` triggers text measurement through the graphic engine, which may load font files from disk. On systems with many fonts, the first call can be slow because SixLabors.Fonts must scan font directories.
+
+To avoid repeated filesystem scans, load fonts into a `MemoryStream` and pass them directly to the engine at startup:
+
+```csharp
+// Load the font file into memory once at startup
+var fontBytes = File.ReadAllBytes("/usr/share/fonts/truetype/carlito/Carlito-Regular.ttf");
+
+LoadOptions.DefaultGraphicEngine =
+    DefaultGraphicEngine.CreateOnlyWithFonts(new MemoryStream(fontBytes));
+```
+
+`CreateOnlyWithFonts` skips system font directory scanning entirely, which can significantly reduce startup time.
+
+### Memory for large workbooks
+
+ClosedXML holds the entire workbook in memory. For a 1 million-row, 10-column text workbook, expect roughly **800 MiB** of RAM. If you need to process files larger than available memory, consider:
+
+- Processing data in smaller chunks before writing.
+- Using `SaveAs` with a `Stream` instead of a file path to avoid double-buffering.
+- Evaluating whether all sheets need to be loaded — see `LoadOptions` below.
+
+### Saving is the bottleneck for large files
+
+For the 250k-row mixed workbook, saving takes ~6.3 seconds versus ~1.6 seconds to insert the data. The save step serialises the entire workbook graph into Open XML format. There is no streaming write API in ClosedXML; the full document must be built in memory before writing.
+
+## `LoadOptions` for controlling what gets loaded
+
+`LoadOptions` lets you tune which parts of the workbook are loaded into memory when opening an existing file.
+
+```csharp
+var options = new LoadOptions
+{
+    // Provide a specific graphic engine (e.g. with a bundled font)
+    GraphicEngine = DefaultGraphicEngine.CreateOnlyWithFonts(
+        new MemoryStream(File.ReadAllBytes("Carlito.ttf")))
+};
+
+using var workbook = new XLWorkbook("large-file.xlsx", options);
+```
+
+Set `LoadOptions.DefaultGraphicEngine` globally (once, at startup) to apply an engine to every workbook opened in the process:
+
+```csharp
+LoadOptions.DefaultGraphicEngine =
+    DefaultGraphicEngine.CreateOnlyWithFonts(
+        new MemoryStream(File.ReadAllBytes("Carlito.ttf")));
+```
+
+## Thread safety
+
+<Warning>
+ClosedXML is **not thread-safe**. Do not share a workbook, worksheet, or any ClosedXML object between threads. The underlying OpenXML SDK is also not thread-safe. Create a separate `XLWorkbook` instance per thread or use locking.
+</Warning>
+
+```csharp
+// Incorrect — sharing a workbook across threads is not safe
+var workbook = new XLWorkbook();
+Parallel.For(0, 10, i =>
+{
+    workbook.Worksheets.Add($"Sheet{i}"); // data races, undefined behavior
+});
+
+// Correct — create one workbook per thread (or use locking)
+Parallel.For(0, 10, i =>
+{
+    using var wb = new XLWorkbook();
+    wb.Worksheets.Add($"Sheet{i}");
+    wb.SaveAs($"output_{i}.xlsx");
+});
+```
+
+## Summary of best practices
+
+| Concern | Recommendation |
+|---------|---------------|
+| Iterating cells | Use `CellsUsed()` / `RowsUsed()` to skip blank cells |
+| Font scanning | Pre-load fonts into `MemoryStream` with `CreateOnlyWithFonts` |
+| Column widths | Set `IXLColumn.Width` explicitly instead of `AdjustToContents` when accuracy is not critical |
+| Memory | Budget ~800 MiB per million text rows; process in batches if needed |
+| Thread safety | One `XLWorkbook` per thread; no shared state |
+| Large files | Avoid re-opening the same file in a tight loop; keep the workbook open and reuse it |

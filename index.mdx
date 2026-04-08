@@ -1,97 +1,109 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "ClosedXML"
+description: "A .NET library for reading, manipulating, and writing Excel 2007+ (.xlsx, .xlsm) files — no Excel required."
 ---
 
-## Setting up
+ClosedXML is a .NET library that lets you create, read, and modify Excel spreadsheets without needing Microsoft Excel installed. It wraps the low-level OpenXML SDK with an intuitive, fluent API that makes working with workbooks, worksheets, cells, tables, and formulas straightforward.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install ClosedXML via NuGet in seconds and get your project configured
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create your first Excel file with a working code example in minutes
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Core Concepts" icon="book" href="/concepts/workbook-and-worksheets">
+    Understand workbooks, worksheets, cells, ranges, and value types
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="API Reference" icon="code" href="/api/workbook">
+    Explore the full public API surface with type signatures and examples
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What you can build
 
-Everything you need to create world-class documentation.
+ClosedXML is used to generate Excel reports on web servers, automate data exports, and process uploaded spreadsheets — all without any dependency on the Excel application itself.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+```csharp quickstart.cs
+using ClosedXML.Excel;
 
-## Need inspiration?
+using var workbook = new XLWorkbook();
+var worksheet = workbook.AddWorksheet("Sales Report");
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+worksheet.Cell("A1").Value = "Product";
+worksheet.Cell("B1").Value = "Units Sold";
+worksheet.Cell("C1").Value = "Revenue";
+
+worksheet.Cell("A2").Value = "Widget A";
+worksheet.Cell("B2").Value = 1500;
+worksheet.Cell("C2").Value = 45000.00;
+
+// Apply bold formatting to the header row
+worksheet.Row(1).Style.Font.Bold = true;
+
+workbook.SaveAs("SalesReport.xlsx");
+```
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Tables & Pivot Tables" icon="table" href="/features/tables">
+    Create structured tables with sorting, filtering, and totals rows. Build pivot tables to summarize data.
+  </Card>
+  <Card title="Formulas" icon="square-root-variable" href="/features/formulas">
+    Read and write Excel formulas. Evaluate them in .NET using 400+ supported functions.
+  </Card>
+  <Card title="Cell Styles" icon="paintbrush" href="/features/cell-styles">
+    Apply fonts, colors, borders, fills, and number formats with a fluent style API.
+  </Card>
+  <Card title="Data Import" icon="file-import" href="/features/bulk-insert-data">
+    Bulk-insert data from IEnumerable collections, DataTable, and more.
+  </Card>
+  <Card title="AutoFilter & Sorting" icon="filter" href="/features/autofilter">
+    Add column filters with custom conditions and sort data in worksheets and tables.
+  </Card>
+  <Card title="Protection" icon="lock" href="/features/protection">
+    Protect workbooks and worksheets with passwords to prevent accidental modification.
+  </Card>
+</CardGroup>
+
+## Get started
+
+<Steps>
+  <Step title="Install via NuGet">
+    Add ClosedXML to your .NET project using the .NET CLI or Package Manager Console.
+
+    ```bash
+    dotnet add package ClosedXML
+    ```
+  </Step>
+  <Step title="Create a workbook">
+    Instantiate `XLWorkbook`, add a worksheet, and set cell values.
+
+    ```csharp
+    using var workbook = new XLWorkbook();
+    var ws = workbook.AddWorksheet("Sheet1");
+    ws.Cell("A1").Value = "Hello, World!";
+    ```
+  </Step>
+  <Step title="Save the file">
+    Save to a file path or stream. The file is a standard `.xlsx` that opens in Excel, LibreOffice, and Google Sheets.
+
+    ```csharp
+    workbook.SaveAs("output.xlsx");
+    ```
+  </Step>
+  <Step title="Read an existing file">
+    Load an existing `.xlsx` file and read cell values directly.
+
+    ```csharp
+    using var workbook = new XLWorkbook("existing.xlsx");
+    var ws = workbook.Worksheet("Sheet1");
+    var value = ws.Cell("A1").GetValue<string>();
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  ClosedXML targets .NET Standard 2.0 and runs on .NET Core 2.0+, .NET Framework 4.6.2+, and Blazor. It is not thread-safe — do not share workbook instances across threads.
+</Note>

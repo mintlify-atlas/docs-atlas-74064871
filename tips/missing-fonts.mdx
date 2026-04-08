@@ -1,0 +1,152 @@
+---
+title: "Missing Fonts"
+description: "Resolve the 'Unable to find font' exception when using ClosedXML on Linux, cloud environments, or any system missing Windows fonts."
+---
+
+## The error
+
+When calling `IXLColumn.AdjustToContents()` (or similar text-measurement operations), you may see:
+
+```
+Unable to find font 'Calibri' or fallback font 'Microsoft Sans Serif'.
+Install missing fonts or specify a different fallback font through
+'LoadOptions.DefaultGraphicEngine = new DefaultGraphicEngine("Fallback font name")'.
+```
+
+This is most common on Linux, AWS Lambda, Azure Functions, or any environment that does not ship Windows fonts.
+
+## Why it happens
+
+ClosedXML uses [SixLabors.Fonts](https://github.com/SixLabors/Fonts) to measure text — for example, to determine how wide a column must be to fit its content. Accurate text measurement requires the actual font file, because different fonts render characters at different widths.
+
+The `DefaultGraphicEngine` works like this:
+
+1. Try to load the font requested by the cell (e.g. Calibri).
+2. If that font is not found, fall back to **Microsoft Sans Serif**.
+3. If the fallback font is also not found, throw the exception above.
+
+<Note>
+The default font for `.xlsx` files is **Calibri**, which is a copyrighted typeface that ships only with Windows and Microsoft Office. It is not available on Linux or most cloud runtimes.
+</Note>
+
+### Where SixLabors.Fonts looks for fonts
+
+| Platform | Directories |
+|----------|-------------|
+| **Windows** | `%SYSTEMROOT%\Fonts`, `%APPDATA%\Microsoft\Windows\Fonts`, `%LOCALAPPDATA%\Microsoft\Windows\Fonts` |
+| **Linux** | `~/.fonts/`, `/usr/local/share/fonts/`, `/usr/share/fonts/` |
+| **macOS** | `~/Library/Fonts/`, `/Library/Fonts/`, `/System/Library/Fonts/`, `/Network/Library/Fonts/` |
+| **Android** | `/system/fonts/` |
+
+## Solutions
+
+### Option 1 — Use an already-installed system font
+
+If you don't need pixel-perfect column widths, pick a font that is already present on your target environment and tell ClosedXML to use it as the fallback.
+
+First, list the fonts available on the machine:
+
+```csharp
+foreach (var fontFamily in SixLabors.Fonts.SystemFonts.Collection.Families)
+    Console.WriteLine(fontFamily.Name);
+```
+
+Then set the fallback in your application startup — before any workbook is created:
+
+```csharp
+// Replace "DejaVu Sans" with a font name that is actually installed
+LoadOptions.DefaultGraphicEngine = new DefaultGraphicEngine("DejaVu Sans");
+```
+
+<Tip>
+On Debian/Ubuntu you can install a broad set of open fonts with `apt-get install fonts-dejavu`. DejaVu Sans is a reasonable fallback because it is slightly wider than Calibri, which means text will not be clipped or displayed as `####`.
+</Tip>
+
+### Option 2 — Bundle the Carlito font (recommended for Linux/cloud)
+
+[Carlito](https://fontlibrary.org/en/font/carlito) is a free, open-source font that is **metric-compatible with Calibri** — meaning character widths and heights are nearly identical. It is the default Calibri replacement in LibreOffice.
+
+Add the font file to your project as an embedded resource, then load it at startup:
+
+```csharp
+// Load Carlito as the only font (no system fonts are scanned)
+using var fallbackFontStream = Assembly.GetExecutingAssembly()
+    .GetManifestResourceStream("YourNamespace.Carlito.ttf");
+
+LoadOptions.DefaultGraphicEngine =
+    DefaultGraphicEngine.CreateOnlyWithFonts(fallbackFontStream);
+```
+
+To also keep system fonts available alongside your bundled font:
+
+```csharp
+using var fallbackFontStream = Assembly.GetExecutingAssembly()
+    .GetManifestResourceStream("YourNamespace.Carlito.ttf");
+
+LoadOptions.DefaultGraphicEngine =
+    DefaultGraphicEngine.CreateWithFontsAndSystemFonts(fallbackFontStream);
+```
+
+<Note>
+`CreateOnlyWithFonts` skips scanning system font directories entirely. This can improve startup time because SixLabors.Fonts must read each font file to discover its family name (the file name does not always match the font name).
+</Note>
+
+### Option 3 — Install Windows fonts on the server
+
+Install Calibri or Microsoft Sans Serif directly on the target machine. This gives the most accurate measurements but has practical limitations:
+
+- Calibri requires a Microsoft license.
+- Fonts must be present on every deployment target.
+- Some environments (e.g. Azure Consumption plan Functions) do not support custom fonts.
+
+### Option 4 — Set column widths explicitly
+
+If you control the content, set `IXLColumn.Width` or `IXLRow.Height` directly instead of using `AdjustToContents()`. This avoids font measurement entirely.
+
+```csharp
+using var workbook = new XLWorkbook();
+var ws = workbook.Worksheets.Add("Sheet1");
+ws.Cell("A1").Value = "Hello World";
+ws.Column("A").Width = 20; // width is in multiples of Maximum Digit Width (MDW)
+workbook.SaveAs("output.xlsx");
+```
+
+### Option 5 — Create a custom graphic engine adapter
+
+As a last resort, you can implement `IXLGraphicEngine` yourself. Delegate `GetPictureInfo` to `DefaultGraphicEngine.Instance.Value.GetPictureInfo` and implement text-measurement methods using fixed EM-square sizes or hard-coded values. This is not recommended because measurements will be inaccurate.
+
+## Per-workbook configuration
+
+All examples above set the engine globally via the static `LoadOptions.DefaultGraphicEngine`. To apply an engine to a single workbook only:
+
+```csharp
+var options = new LoadOptions
+{
+    GraphicEngine = new DefaultGraphicEngine("DejaVu Sans")
+};
+
+using var workbook = new XLWorkbook(options);
+```
+
+The engine resolution order is:
+
+1. `LoadOptions.GraphicEngine` (per-workbook)
+2. `LoadOptions.DefaultGraphicEngine` (global static)
+3. `DefaultGraphicEngine.Instance` (built-in default, uses Microsoft Sans Serif)
+
+## Linux quick-start
+
+```bash
+# Debian / Ubuntu
+apt-get install -y fonts-carlito
+
+# Red Hat / Amazon Linux
+yum install -y google-crosextrafonts-carlito
+```
+
+Then in your application startup:
+
+```csharp
+// "Carlito" is now available as a system font
+LoadOptions.DefaultGraphicEngine = new DefaultGraphicEngine("Carlito");
+```

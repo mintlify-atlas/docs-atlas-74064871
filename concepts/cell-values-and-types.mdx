@@ -1,0 +1,367 @@
+---
+title: "Cell Values and Types"
+description: "Learn about the XLCellValue type system — the five scalar types that cells can hold, how to read and write values, and how dates and times are represented."
+---
+
+## The XLCellValue type system
+
+Every cell in a ClosedXML workbook holds a value of type `XLCellValue` — a readonly struct that carries both the data and its type tag. The type is exposed via the `XLDataType` enum through `XLCellValue.Type`.
+
+There are five Excel-native scalar types, plus two .NET-friendly wrappers for dates and times:
+
+| `XLDataType` | Excel concept | .NET representation |
+|---|---|---|
+| `Blank` | Empty cell | `Blank.Value` (unit value) |
+| `Boolean` | Logical TRUE/FALSE | `bool` |
+| `Number` | Double-precision number | `double` |
+| `Text` | String up to 32,767 chars | `string` |
+| `Error` | Formula error (`#DIV/0!`, etc.) | `XLError` enum |
+| `DateTime` | Date/time stored as serial number | `DateTime` |
+| `TimeSpan` | Duration stored as serial fraction | `TimeSpan` |
+
+<Note>
+  `DateTime` and `TimeSpan` are ClosedXML conveniences. Internally — and in the Excel file format — they are stored as `Number` values (serial date-times). The `XLDataType.Number` type in Excel source docs maps to all of `Number`, `DateTime`, and `TimeSpan` in ClosedXML.
+</Note>
+
+---
+
+## Setting cell values
+
+Assign to `IXLCell.Value` using any of the supported .NET types. ClosedXML provides implicit conversion operators from all common numeric types, `bool`, `string`, `DateTime`, `TimeSpan`, `XLError`, and their nullable counterparts.
+
+```csharp
+using ClosedXML.Excel;
+
+using var workbook = new XLWorkbook();
+var ws = workbook.AddWorksheet("Values");
+
+// Blank
+ws.Cell("A1").Value = Blank.Value;
+
+// Boolean
+ws.Cell("A2").Value = true;
+
+// Numbers — any numeric type implicitly converts
+ws.Cell("A3").Value = 42;
+ws.Cell("A4").Value = 3.14159;
+ws.Cell("A5").Value = 100m;           // decimal
+
+// Text
+ws.Cell("A6").Value = "Hello, World!";
+
+// DateTime — stored as a serial date-time number
+ws.Cell("A7").Value = new DateTime(2025, 6, 15);
+
+// TimeSpan — stored as a serial time fraction (24h = 1.0)
+ws.Cell("A8").Value = TimeSpan.FromHours(36);  // stored as 1.5
+
+// Error
+ws.Cell("A9").Value = XLError.DivisionByZero;  // #DIV/0!
+
+// Nullable types — null becomes Blank
+int? maybeNull = null;
+ws.Cell("A10").Value = maybeNull;              // Blank
+
+workbook.SaveAs("values.xlsx");
+```
+
+<Warning>
+  Setting `IXLCell.Value` clears any formula currently on the cell. Use `IXLCell.FormulaA1` to set a formula instead.
+</Warning>
+
+---
+
+## Reading cell values
+
+### The Value property
+
+`IXLCell.Value` returns an `XLCellValue`. If the cell contains a dirty formula, accessing `Value` triggers recalculation first.
+
+```csharp
+using ClosedXML.Excel;
+
+using var workbook = new XLWorkbook("data.xlsx");
+var ws = workbook.Worksheet(1);
+
+XLCellValue val = ws.Cell("A1").Value;
+
+// Check the type before reading
+switch (val.Type)
+{
+    case XLDataType.Blank:
+        Console.WriteLine("Cell is empty.");
+        break;
+    case XLDataType.Boolean:
+        Console.WriteLine($"Logical: {val.GetBoolean()}");
+        break;
+    case XLDataType.Number:
+        Console.WriteLine($"Number: {val.GetNumber()}");
+        break;
+    case XLDataType.Text:
+        Console.WriteLine($"Text: {val.GetText()}");
+        break;
+    case XLDataType.Error:
+        Console.WriteLine($"Error: {val.GetError()}");  // e.g. XLError.DivisionByZero
+        break;
+    case XLDataType.DateTime:
+        Console.WriteLine($"Date: {val.GetDateTime():yyyy-MM-dd}");
+        break;
+    case XLDataType.TimeSpan:
+        Console.WriteLine($"Duration: {val.GetTimeSpan()}");
+        break;
+}
+```
+
+### Type-safe accessors on XLCellValue
+
+`XLCellValue` exposes `Is*` properties and `Get*` methods. The `Get*` methods throw `InvalidCastException` if the type does not match.
+
+```csharp
+XLCellValue val = ws.Cell("B2").Value;
+
+if (val.IsNumber)
+{
+    double number = val.GetNumber();
+}
+
+if (val.IsText)
+{
+    string text = val.GetText();
+}
+
+if (val.IsBoolean)
+{
+    bool flag = val.GetBoolean();
+}
+
+if (val.IsDateTime)
+{
+    DateTime dt = val.GetDateTime();
+}
+
+if (val.IsError)
+{
+    XLError err = val.GetError();
+}
+```
+
+### GetValue&lt;T&gt; with type conversion
+
+`IXLCell.GetValue<T>()` attempts to convert the cell value to `T` using the same coercion rules as formula evaluation. It throws `InvalidCastException` on failure. Use `TryGetValue<T>` for the non-throwing version.
+
+```csharp
+IXLCell cell = ws.Cell("C3");
+
+// Throws if value cannot be converted to int
+int count = cell.GetValue<int>();
+
+// Safe try-pattern
+if (cell.TryGetValue<double>(out double result))
+{
+    Console.WriteLine($"As double: {result}");
+}
+
+// String always succeeds — returns text representation
+string display = cell.GetValue<string>();
+
+// DateTime — works on Number, DateTime, and TimeSpan types
+if (cell.TryGetValue<DateTime>(out DateTime date))
+{
+    Console.WriteLine($"Date: {date:d}");
+}
+
+// Enum — matches by member name (case-insensitive)
+if (cell.TryGetValue<DayOfWeek>(out DayOfWeek day))
+{
+    Console.WriteLine($"Day: {day}");
+}
+```
+
+Supported types for `GetValue<T>` / `TryGetValue<T>`:
+
+- `bool`
+- Numeric types: `sbyte`, `byte`, `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `float`, `double`, `decimal`
+- `string` (always succeeds; returns a text representation)
+- `DateTime`
+- `TimeSpan`
+- `XLError`
+- Any `enum` (matched by name against the cell's text representation)
+- Nullable value types (returns `null` if cell is blank or empty text)
+
+---
+
+## Type conversion rules
+
+`XLCellValue` provides `TryConvert` overloads for cross-type coercion. These follow the same rules the formula engine uses when coercing function arguments.
+
+<AccordionGroup>
+  <Accordion title="To Boolean">
+    ```csharp
+    XLCellValue val = 1.0;  // Number
+
+    if (val.TryConvert(out bool b))
+        Console.WriteLine(b);  // true (any non-zero number → true)
+
+    // Also works for text "TRUE" / "FALSE" (case-insensitive)
+    XLCellValue text = "FALSE";
+    text.TryConvert(out bool result);  // result = false
+    ```
+
+    | Source type | Conversion rule |
+    |---|---|
+    | `Blank` | `false` |
+    | `Boolean` | identity |
+    | `Number` | `0` → `false`, any other → `true` |
+    | `Text` | `"TRUE"` or `"FALSE"` (case-insensitive); other text fails |
+  </Accordion>
+  <Accordion title="To Number (double)">
+    ```csharp
+    using System.Globalization;
+
+    XLCellValue text = "3.14";
+    if (text.TryConvert(out double num, CultureInfo.InvariantCulture))
+        Console.WriteLine(num);  // 3.14
+
+    XLCellValue logical = true;
+    logical.TryConvert(out double n, CultureInfo.CurrentCulture);
+    Console.WriteLine(n);  // 1.0
+    ```
+
+    | Source type | Conversion rule |
+    |---|---|
+    | `Blank` | `0` |
+    | `Boolean` | `false` → `0`, `true` → `1` |
+    | `Number` | identity |
+    | `DateTime` | serial date-time double |
+    | `TimeSpan` | serial time-span double |
+    | `Text` | VALUE semantics (e.g. `"10"`, `"2 1/2"`, `"1900-01-10"`); non-numeric fails |
+  </Accordion>
+  <Accordion title="To DateTime">
+    ```csharp
+    XLCellValue serial = 45000.0;  // Number treated as serial date
+    if (serial.TryConvert(out DateTime dt))
+        Console.WriteLine(dt);  // 2023-03-14
+    ```
+
+    Succeeds when the type is `DateTime`, `Number`, or `TimeSpan` — as long as the serial value maps to a valid .NET `DateTime`.
+  </Accordion>
+  <Accordion title="To TimeSpan">
+    ```csharp
+    using System.Globalization;
+
+    XLCellValue serial = 1.5;  // 36 hours
+    if (serial.TryConvert(out TimeSpan ts, CultureInfo.CurrentCulture))
+        Console.WriteLine(ts);  // 1.12:00:00 (36 hours)
+
+    XLCellValue text = "36:00:00";
+    text.TryConvert(out TimeSpan ts2, CultureInfo.CurrentCulture);
+    Console.WriteLine(ts2);  // 1.12:00:00
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Dates, times, and serial numbers
+
+Excel stores dates and times as serial numbers — a `double` where the integer part counts days since January 0, 1900 (Excel's epoch), and the fractional part represents the time of day.
+
+| Serial value | Meaning |
+|---|---|
+| `1.0` | 1900-01-01 |
+| `45000.0` | 2023-03-14 |
+| `0.5` | 12:00:00 (noon) |
+| `1.5` | 1900-01-01 12:00:00 (also 36 hours as a TimeSpan) |
+
+ClosedXML surfaces this through `XLDataType.DateTime` and `XLDataType.TimeSpan`, converting transparently between the serial number and `DateTime`/`TimeSpan` .NET types.
+
+```csharp
+using var workbook = new XLWorkbook();
+var ws = workbook.AddWorksheet("Dates");
+
+// Write a DateTime — ClosedXML formats the cell automatically
+ws.Cell("A1").Value = new DateTime(2025, 1, 15, 9, 30, 0);
+ws.Cell("A1").Style.DateFormat.Format = "yyyy-MM-dd HH:mm";
+
+// Read back — returns DateTime (not a raw double)
+DateTime dt = ws.Cell("A1").Value.GetDateTime();
+
+// Write a TimeSpan — useful for duration columns
+ws.Cell("B1").Value = TimeSpan.FromMinutes(90);  // 1h 30m → serial 0.0625
+ws.Cell("B1").Style.DateFormat.Format = "[h]:mm";
+
+TimeSpan ts = ws.Cell("B1").Value.GetTimeSpan();
+Console.WriteLine(ts.TotalMinutes);  // 90
+
+workbook.SaveAs("dates.xlsx");
+```
+
+<Note>
+  The 1904 date system (used by some macOS-originated workbooks) shifts the epoch by four years. Enable it with `workbook.Use1904DateSystem = true`. This changes how serial numbers map to calendar dates.
+</Note>
+
+---
+
+## Distinguishing formula results from stored values
+
+`IXLCell` provides two properties for reading cell values:
+
+| Property | Behavior |
+|---|---|
+| `Value` | Evaluates any dirty formula before returning. Always up-to-date. |
+| `CachedValue` | Returns the last-calculated value without triggering evaluation. May be stale. |
+
+```csharp
+using var workbook = new XLWorkbook("formulas.xlsx");
+var ws = workbook.Worksheet(1);
+
+IXLCell cell = ws.Cell("C1");
+
+// Guaranteed current — recalculates if cell.NeedsRecalculation is true
+XLCellValue current = cell.Value;
+
+// Fast path — may be stale if the workbook was modified without recalculation
+XLCellValue cached = cell.CachedValue;
+
+// Check whether a recalculation is pending
+bool isDirty = cell.NeedsRecalculation;
+
+// Check if the cell has any formula at all
+bool hasFormula = cell.HasFormula;
+```
+
+<Warning>
+  Using `cell.Value` in a tight loop over thousands of formula cells can be slow because each access may trigger a formula evaluation. Use `cell.CachedValue` when performance matters and call `workbook.RecalculateAllFormulas()` up front to ensure values are fresh.
+</Warning>
+
+---
+
+## Error values
+
+The `XLError` enum maps directly to Excel's seven error codes:
+
+| `XLError` member | Excel display | Meaning |
+|---|---|---|
+| `NullValue` | `#NULL!` | Intersection of two non-overlapping ranges |
+| `DivisionByZero` | `#DIV/0!` | Division by zero |
+| `IncompatibleValue` | `#VALUE!` | Wrong argument type |
+| `CellReference` | `#REF!` | Invalid cell reference |
+| `NameNotRecognized` | `#NAME?` | Undefined name |
+| `NumberInvalid` | `#NUM!` | Number out of domain |
+| `NoValueAvailable` | `#N/A` | Value not available |
+
+```csharp
+using var workbook = new XLWorkbook();
+var ws = workbook.AddWorksheet("Errors");
+
+// Write an error value directly
+ws.Cell("A1").Value = XLError.NoValueAvailable;  // #N/A
+
+// Read and check for error
+XLCellValue val = ws.Cell("A1").Value;
+if (val.IsError)
+{
+    XLError err = val.GetError();
+    Console.WriteLine(err);  // NoValueAvailable
+}
+```

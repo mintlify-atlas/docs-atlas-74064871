@@ -1,0 +1,526 @@
+---
+title: "IXLPivotTable and IXLPivotCache"
+description: "API reference for pivot tables and pivot caches in ClosedXML — creation, fields, values, and cache management."
+---
+
+## Overview
+
+Pivot tables in ClosedXML consist of two cooperating objects:
+
+- **`IXLPivotCache`** — a cached copy of source data (columns become fields). One cache can back multiple pivot tables.
+- **`IXLPivotTable`** — the table displayed in a worksheet. It references a cache and declares which fields appear on which axis.
+
+---
+
+## Architecture
+
+```
+Source range / table
+        │
+        ▼
+  IXLPivotCache          ← stores field names and cached values
+        │
+        ├── IXLPivotTable (sheet "Summary")
+        └── IXLPivotTable (sheet "Charts")   ← multiple tables can share one cache
+```
+
+Pivot cache data are **not** updated automatically when source data change. Call `IXLPivotCache.Refresh()` to synchronise.
+
+---
+
+## IXLPivotCache
+
+### Creating a pivot cache
+
+```csharp
+// Via the workbook's PivotCaches collection
+IXLPivotCache cache = wb.PivotCaches.Add(range);
+
+// Or implicitly when adding a pivot table directly from a range or table
+IXLPivotTable pt = ws.PivotTables.Add("pvt", ws.Cell("H1"), range);
+// pt.PivotCache is set automatically
+```
+
+### Properties
+
+#### FieldNames
+
+```csharp
+IReadOnlyList<String> FieldNames { get; }
+```
+
+Names of all fields in source order. Names are unique and case-insensitive. If the source contained duplicate column headers, they are disambiguated by appending a number (e.g. `Cost`, `Cost2`).
+
+---
+
+#### SaveSourceData
+
+```csharp
+Boolean SaveSourceData { get; set; }
+```
+
+When `true` (default), cached values are serialised into the workbook file. Disable to reduce file size at the cost of requiring the source to be available on open.
+
+---
+
+#### RefreshDataOnOpen
+
+```csharp
+Boolean RefreshDataOnOpen { get; set; }
+```
+
+When `true`, Excel will refresh the cache when the workbook is opened. Default is `false`.
+
+---
+
+#### ItemsToRetainPerField
+
+```csharp
+XLItemsToRetain ItemsToRetainPerField { get; set; }
+```
+
+Controls how many stale (deleted) items are kept in each field's distinct-value list after a refresh. See `XLItemsToRetain` below.
+
+---
+
+### Methods
+
+#### Refresh
+
+```csharp
+IXLPivotCache Refresh();
+```
+
+Re-reads values from the source range/table into the cache. This updates `FieldNames`, removes deleted fields from all dependent pivot tables, and recalculates displayed values.
+
+**Throws** `InvalidReferenceException` if the source range can no longer be found.
+
+---
+
+#### Fluent setters
+
+```csharp
+IXLPivotCache SetSaveSourceData();
+IXLPivotCache SetSaveSourceData(Boolean value);
+
+IXLPivotCache SetRefreshDataOnOpen();
+IXLPivotCache SetRefreshDataOnOpen(Boolean value);
+
+IXLPivotCache SetItemsToRetainPerField(XLItemsToRetain value);
+```
+
+---
+
+## IXLPivotCaches
+
+All caches in the workbook are accessible via `XLWorkbook.PivotCaches`:
+
+```csharp
+IXLPivotCaches caches = wb.PivotCaches;
+IXLPivotCache cache = caches.Add(range);
+
+// Refresh every cache
+foreach (var c in wb.PivotCaches)
+    c.Refresh();
+```
+
+#### Add
+
+```csharp
+IXLPivotCache Add(IXLRange range);
+```
+
+Adds a new pivot cache for the given range. If the range coincides with an existing table, the cache references the table as its source.
+
+---
+
+## IXLPivotTable
+
+### Creating a pivot table
+
+```csharp
+// Add to a worksheet's PivotTables collection
+IXLPivotTable pt = ws.PivotTables.Add("pvt", targetCell, range);
+IXLPivotTable pt = ws.PivotTables.Add("pvt", targetCell, table);
+IXLPivotTable pt = ws.PivotTables.Add("pvt", targetCell, pivotCache);
+```
+
+<ParamField body="name" type="String">
+  Unique name of the pivot table. Case-insensitive uniqueness is enforced.
+</ParamField>
+<ParamField body="targetCell" type="IXLCell">
+  Top-left cell of the pivot table output area (filter fields are placed above this cell when present).
+</ParamField>
+
+**Throws** `ArgumentException` if a pivot table with that name already exists.
+
+---
+
+### Core identity properties
+
+| Property | Type | Description |
+|---|---|---|
+| `Name` | `string` | Unique name of the pivot table. |
+| `Title` | `string` | Optional display title. |
+| `Description` | `string` | Optional description. |
+| `TargetCell` | `IXLCell` | Top-left cell of the pivot table. |
+| `PivotCache` | `IXLPivotCache` | The data source cache. Can be reassigned. |
+| `Worksheet` | `IXLWorksheet` | The worksheet containing this pivot table. |
+
+---
+
+### Field collections
+
+#### RowLabels
+
+```csharp
+IXLPivotFields RowLabels { get; }
+```
+
+Fields placed on the row axis (vertical). Each distinct value of the field becomes a row group.
+
+#### ColumnLabels
+
+```csharp
+IXLPivotFields ColumnLabels { get; }
+```
+
+Fields placed on the column axis (horizontal). Each distinct value becomes a column group.
+
+#### Values
+
+```csharp
+IXLPivotValues Values { get; }
+```
+
+Value fields placed in the data area. See [IXLPivotValue](#ixlpivotvalue).
+
+#### ReportFilters
+
+```csharp
+IXLPivotFields ReportFilters { get; }
+```
+
+Fields used as page/report filters (displayed above the pivot table).
+
+---
+
+### Layout properties
+
+| Property | Type | Description |
+|---|---|---|
+| `Theme` | `XLPivotTableTheme` | Visual theme (see [XLPivotTableTheme](#xlpivottabletheme)). |
+| `Layout` | `XLPivotLayout` (set-only) | Sets layout for all fields: `Compact`, `Outline`, or `Tabular`. |
+| `MergeAndCenterWithLabels` | `Boolean` | Merge and center cells with group labels. |
+| `RowLabelIndent` | `Int32` | Indent level for row labels. |
+| `ShowGrandTotalsRows` | `Boolean` | Show a grand total row at the bottom. |
+| `ShowGrandTotalsColumns` | `Boolean` | Show a grand total column on the right. |
+| `ShowRowHeaders` | `Boolean` | Show row header formatting. |
+| `ShowColumnHeaders` | `Boolean` | Show column header formatting. |
+| `ShowRowStripes` | `Boolean` | Alternate shading on rows. |
+| `ShowColumnStripes` | `Boolean` | Alternate shading on columns. |
+| `Subtotals` | `XLPivotSubtotals` | Where subtotals appear: `DoNotShow`, `AtTop`, `AtBottom`. |
+| `InsertBlankLines` | `Boolean` (set-only) | Insert blank lines after each group. |
+| `AutofitColumns` | `Boolean` | Auto-fit column widths after refresh. |
+| `PreserveCellFormatting` | `Boolean` | Preserve manual cell formatting across refreshes. |
+| `ColumnHeaderCaption` | `string` | Caption for the column axis header. |
+| `RowHeaderCaption` | `string` | Caption for the row axis header. |
+| `FilterAreaOrder` | `XLFilterAreaOrder` | Order filter fields are laid out: `DownThenOver` or `OverThenDown`. |
+| `FilterFieldsPageWrap` | `Int32` | Number of filter fields per row/column before wrapping (0 = unlimited). |
+| `ErrorValueReplacement` | `string` | Text to display instead of error values. |
+| `EmptyCellReplacement` | `string` | Text to display in empty value cells. |
+
+---
+
+### Fluent setters
+
+Every boolean property above has a corresponding `Set` method returning `IXLPivotTable`:
+
+```csharp
+IXLPivotTable SetName(String value);
+IXLPivotTable SetTitle(String value);
+IXLPivotTable SetDescription(String value);
+IXLPivotTable SetLayout(XLPivotLayout value);
+IXLPivotTable SetShowGrandTotalsRows();
+IXLPivotTable SetShowGrandTotalsRows(Boolean value);
+IXLPivotTable SetShowGrandTotalsColumns();
+IXLPivotTable SetShowGrandTotalsColumns(Boolean value);
+IXLPivotTable SetSubtotals(XLPivotSubtotals value);
+IXLPivotTable SetMergeAndCenterWithLabels();
+IXLPivotTable SetMergeAndCenterWithLabels(Boolean value);
+IXLPivotTable SetRowLabelIndent(Int32 value);
+IXLPivotTable SetAutofitColumns();
+IXLPivotTable SetAutofitColumns(Boolean value);
+IXLPivotTable SetPreserveCellFormatting();
+IXLPivotTable SetPreserveCellFormatting(Boolean value);
+IXLPivotTable SetFilterAreaOrder(XLFilterAreaOrder value);
+IXLPivotTable SetFilterFieldsPageWrap(Int32 value);
+IXLPivotTable SetErrorValueReplacement(String value);
+IXLPivotTable SetEmptyCellReplacement(String value);
+IXLPivotTable SetColumnHeaderCaption(String value);
+IXLPivotTable SetRowHeaderCaption(String value);
+// ... and more for each Boolean property
+```
+
+---
+
+### CopyTo
+
+```csharp
+IXLPivotTable CopyTo(IXLCell targetCell);
+```
+
+Copies the pivot table to a new location (may be on a different sheet).
+
+---
+
+## IXLPivotFields
+
+Collection used for `RowLabels`, `ColumnLabels`, and `ReportFilters`.
+
+```csharp
+IXLPivotField Add(String sourceName);
+IXLPivotField Add(String sourceName, String customName);
+void Clear();
+Boolean Contains(String sourceName);
+Boolean Contains(IXLPivotField pivotField);
+IXLPivotField Get(String sourceName);
+IXLPivotField Get(Int32 index);
+Int32 IndexOf(String sourceName);
+Int32 IndexOf(IXLPivotField pf);
+void Remove(String sourceName);
+```
+
+<ParamField body="sourceName" type="String">
+  The field name as it appears in `IXLPivotCache.FieldNames`.
+</ParamField>
+<ParamField body="customName" type="String">
+  Display name for the field in the pivot table. Must be unique across all used fields.
+</ParamField>
+
+---
+
+## IXLPivotField
+
+A field placed on a row, column, or filter axis.
+
+| Property | Type | Description |
+|---|---|---|
+| `SourceName` | `string` | Field name in the pivot cache. |
+| `CustomName` | `string` | Display name in the pivot table. |
+| `SortType` | `XLPivotSortType` | `Default`, `Ascending`, or `Descending`. |
+| `Collapsed` | `Boolean` | Whether all items in this field are collapsed. |
+| `Outline` | `Boolean` | Show in outline layout. |
+| `Compact` | `Boolean` | Show in compact layout. |
+| `SubtotalsAtTop` | `Boolean?` | Show subtotals above items (outline mode). |
+| `RepeatItemLabels` | `Boolean` | Repeat item labels for each row. |
+| `InsertBlankLines` | `Boolean` | Insert blank lines after each group. |
+| `ShowBlankItems` | `Boolean` | Show items with no data. |
+| `InsertPageBreaks` | `Boolean` | Insert page breaks after each group. |
+| `IsOnRowAxis` | `Boolean` | Field is on the row axis. |
+| `IsOnColumnAxis` | `Boolean` | Field is on the column axis. |
+| `IsInFilterList` | `Boolean` | Field is in the report filters. |
+| `SelectedValues` | `IReadOnlyList<XLCellValue>` | Selected values for report filter. |
+
+### Fluent methods
+
+```csharp
+IXLPivotField SetCustomName(String value);
+IXLPivotField SetLayout(XLPivotLayout value);
+IXLPivotField AddSubtotal(XLSubtotalFunction value);
+IXLPivotField SetSubtotalsAtTop(Boolean value = true);
+IXLPivotField SetRepeatItemLabels(Boolean value = true);
+IXLPivotField SetInsertBlankLines(Boolean value = true);
+IXLPivotField SetShowBlankItems(Boolean value = true);
+IXLPivotField SetCollapsed(Boolean value = true);
+IXLPivotField SetSort(XLPivotSortType value);
+IXLPivotField AddSelectedValue(XLCellValue value);
+IXLPivotField AddSelectedValues(IEnumerable<XLCellValue> values);
+```
+
+---
+
+## IXLPivotValues
+
+Collection used for `IXLPivotTable.Values`.
+
+```csharp
+IXLPivotValue Add(String sourceName);
+IXLPivotValue Add(String sourceName, String customName);
+void Clear();
+Boolean Contains(String customName);
+Boolean Contains(IXLPivotValue pivotValue);
+IXLPivotValue Get(String customName);
+IXLPivotValue Get(Int32 index);
+Int32 IndexOf(String customName);
+Int32 IndexOf(IXLPivotValue pivotValue);
+void Remove(String customName);
+```
+
+---
+
+## IXLPivotValue
+
+Defines how a data field is summarised and displayed.
+
+| Property | Type | Description |
+|---|---|---|
+| `SourceName` | `string` | Field name from the pivot cache. |
+| `CustomName` | `string` | Display name (header) for the value field. |
+| `SummaryFormula` | `XLPivotSummary` | Aggregation function (default `Sum`). |
+| `Calculation` | `XLPivotCalculation` | How values are shown (e.g. `PercentageOfTotal`). |
+| `CalculationItem` | `XLPivotCalculationItem` | Reference item for relative calculations: `Value`, `Previous`, or `Next`. |
+| `BaseFieldName` | `string` | Base field for relative calculations. |
+| `BaseItemValue` | `XLCellValue` | Base item value for relative calculations. |
+| `NumberFormat` | `IXLPivotValueFormat` | Number format for displayed values. |
+
+### Fluent setters
+
+```csharp
+IXLPivotValue SetSummaryFormula(XLPivotSummary value);
+IXLPivotValue SetCalculation(XLPivotCalculation value);
+IXLPivotValue SetCalculationItem(XLPivotCalculationItem value);
+IXLPivotValue SetBaseFieldName(String value);
+IXLPivotValue SetBaseItemValue(XLCellValue value);
+```
+
+### Show-as helpers
+
+```csharp
+IXLPivotValue ShowAsNormal();
+IXLPivotValue ShowAsIndex();
+IXLPivotValue ShowAsPercentageOfRow();
+IXLPivotValue ShowAsPercentageOfColumn();
+IXLPivotValue ShowAsPercentageOfTotal();
+IXLPivotValue ShowAsRunningTotalIn(String fieldSourceName);
+IXLPivotValueCombination ShowAsDifferenceFrom(String fieldSourceName);
+IXLPivotValueCombination ShowAsPercentageFrom(String fieldSourceName);
+IXLPivotValueCombination ShowAsPercentageDifferenceFrom(String fieldSourceName);
+```
+
+---
+
+## Enumerations
+
+### XLPivotSummary
+
+| Value | Description |
+|---|---|
+| `Sum` | Sum of values (default). |
+| `Count` | Count of all cells. |
+| `Average` | Arithmetic mean. |
+| `Minimum` | Minimum value. |
+| `Maximum` | Maximum value. |
+| `Product` | Product of all values. |
+| `CountNumbers` | Count of numeric cells only. |
+| `StandardDeviation` | Sample standard deviation. |
+| `PopulationStandardDeviation` | Population standard deviation. |
+| `Variance` | Sample variance. |
+| `PopulationVariance` | Population variance. |
+
+---
+
+### XLPivotCalculation
+
+| Value | Description |
+|---|---|
+| `Normal` | Display actual values (default). |
+| `DifferenceFrom` | Difference from a base item. |
+| `PercentageOf` | Percentage of a base item. |
+| `PercentageDifferenceFrom` | Percentage difference from a base item. |
+| `RunningTotal` | Running total in a field. |
+| `PercentageOfRow` | Percentage of the row total. |
+| `PercentageOfColumn` | Percentage of the column total. |
+| `PercentageOfTotal` | Percentage of the grand total. |
+| `Index` | Index calculation (importance measure). |
+
+---
+
+### XLPivotSubtotals
+
+| Value | Description |
+|---|---|
+| `DoNotShow` | No subtotals. |
+| `AtTop` | Subtotals above group items. |
+| `AtBottom` | Subtotals below group items. |
+
+---
+
+### XLPivotLayout
+
+| Value | Description |
+|---|---|
+| `Compact` | All row fields in one column. |
+| `Outline` | Each row field in its own column; items expand below. |
+| `Tabular` | Classic tabular layout; each field in its own column. |
+
+---
+
+### XLPivotSortType
+
+| Value | Description |
+|---|---|
+| `Default` | Manual ordering. |
+| `Ascending` | A → Z. |
+| `Descending` | Z → A. |
+
+---
+
+### XLItemsToRetain
+
+| Value | Description |
+|---|---|
+| `Automatic` | Application-determined threshold (default). |
+| `None` | Discard unused items immediately on refresh. |
+| `Max` | Retain all items until all are unused. |
+
+---
+
+### XLPivotTableTheme
+
+`XLPivotTableTheme` is an enum. Values follow the pattern `PivotStyleLight1`–`PivotStyleLight28`, `PivotStyleMedium1`–`PivotStyleMedium28`, `PivotStyleDark1`–`PivotStyleDark28`, plus `None`.
+
+---
+
+## Full example
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Source data
+var range = ws.FirstCell().InsertData(new object[]
+{
+    ("Event",    "Pastry", "Sold", "Cost"),
+    ("Charity",  "Pie",    14,     60),
+    ("Sampling", "Cake",   8,      80),
+    ("Charity",  "Cake",   7,      75),
+    ("Charity",  "Pie",    8,      38),
+});
+
+// Create pivot table on a new worksheet
+var pivotSheet = wb.AddWorksheet("Pivot");
+var pt = pivotSheet.PivotTables.Add("SalesSummary", pivotSheet.Cell("A1"), range);
+
+// Row axis: events
+pt.RowLabels.Add("Event");
+
+// Column axis: pastry types
+pt.ColumnLabels.Add("Pastry");
+
+// Values: sum of Sold, sum of Cost
+pt.Values.Add("Sold").SetSummaryFormula(XLPivotSummary.Sum);
+pt.Values.Add("Cost").SetSummaryFormula(XLPivotSummary.Sum);
+
+// Layout
+pt.Theme = XLPivotTableTheme.PivotStyleMedium9;
+pt.SetShowGrandTotalsColumns(false);
+pt.SetLayout(XLPivotLayout.Tabular);
+
+// Refresh cache to pick up any data changes
+pt.PivotCache.Refresh();
+
+wb.SaveAs("pivot.xlsx");
+```

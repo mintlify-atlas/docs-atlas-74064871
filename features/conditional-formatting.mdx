@@ -1,0 +1,349 @@
+---
+title: "Conditional Formatting"
+description: "Highlight cells automatically based on their values, formulas, text content, or relative position using conditional formatting rules."
+---
+
+Conditional formatting applies a style to cells automatically when a rule is satisfied. Rules are evaluated by Excel at open time — ClosedXML writes the rules into the file, and Excel renders them.
+
+Apply a conditional format by calling `AddConditionalFormat()` on any range, then chain a `When*` condition. The condition returns `IXLStyle`, which you configure the same way as regular cell styles.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+ws.Cell("A1").Value = 1;
+ws.Cell("A2").Value = 2;
+ws.Cell("A3").Value = 3;
+ws.Cell("A4").Value = 4;
+
+// Highlight cells greater than 2 in red
+ws.RangeUsed().AddConditionalFormat().WhenGreaterThan(2)
+    .Fill.SetBackgroundColor(XLColor.Red);
+
+wb.SaveAs("cf-basic.xlsx");
+```
+
+## Value-based rules
+
+These rules compare each cell's value against a constant.
+
+<Tabs>
+  <Tab title="Comparison">
+    ```csharp
+    var range = ws.Range("A1:A10");
+
+    range.AddConditionalFormat().WhenEquals(2)
+        .Fill.SetBackgroundColor(XLColor.Blue);
+
+    range.AddConditionalFormat().WhenNotEquals(2)
+        .Fill.SetBackgroundColor(XLColor.LightGray);
+
+    range.AddConditionalFormat().WhenGreaterThan("5")
+        .Fill.SetBackgroundColor(XLColor.Green);
+
+    range.AddConditionalFormat().WhenLessThan("3")
+        .Fill.SetBackgroundColor(XLColor.Orange);
+
+    range.AddConditionalFormat().WhenEqualOrGreaterThan("5")
+        .Fill.SetBackgroundColor(XLColor.Yellow);
+
+    range.AddConditionalFormat().WhenEqualOrLessThan("3")
+        .Fill.SetBackgroundColor(XLColor.Pink);
+
+    range.AddConditionalFormat().WhenBetween("2", "4")
+        .Fill.SetBackgroundColor(XLColor.Lavender);
+
+    range.AddConditionalFormat().WhenNotBetween("2", "4")
+        .Fill.SetBackgroundColor(XLColor.Salmon);
+    ```
+  </Tab>
+  <Tab title="Top / bottom">
+    ```csharp
+    var range = ws.Range("A1:A20");
+
+    // Top 2 items
+    range.AddConditionalFormat().WhenIsTop(2)
+        .Fill.SetBackgroundColor(XLColor.Gold);
+
+    // Bottom 10%
+    range.AddConditionalFormat().WhenIsBottom(10, XLTopBottomType.Percent)
+        .Fill.SetBackgroundColor(XLColor.Salmon);
+    ```
+  </Tab>
+  <Tab title="Unique / duplicate">
+    ```csharp
+    var range = ws.Range("A1:A10");
+
+    range.AddConditionalFormat().WhenIsUnique()
+        .Fill.SetBackgroundColor(XLColor.LightGreen);
+
+    range.AddConditionalFormat().WhenIsDuplicate()
+        .Fill.SetBackgroundColor(XLColor.Red);
+    ```
+  </Tab>
+</Tabs>
+
+## Text rules
+
+```csharp
+var range = ws.Range("A1:A10");
+
+// Text content
+range.AddConditionalFormat().WhenContains("Hello")
+    .Fill.SetBackgroundColor(XLColor.Yellow);
+
+range.AddConditionalFormat().WhenNotContains("Hello")
+    .Fill.SetBackgroundColor(XLColor.LightGray);
+
+range.AddConditionalFormat().WhenStartsWith("He")
+    .Fill.SetBackgroundColor(XLColor.LightBlue);
+
+range.AddConditionalFormat().WhenEndsWith("lo")
+    .Fill.SetBackgroundColor(XLColor.LightGreen);
+
+range.AddConditionalFormat().WhenEquals("Hello")
+    .Fill.SetBackgroundColor(XLColor.Orange);
+```
+
+## Blank and error rules
+
+```csharp
+var range = ws.Range("A1:A10");
+
+range.AddConditionalFormat().WhenIsBlank()
+    .Fill.SetBackgroundColor(XLColor.LightYellow);
+
+range.AddConditionalFormat().WhenNotBlank()
+    .Fill.SetBackgroundColor(XLColor.White);
+
+range.AddConditionalFormat().WhenIsError()
+    .Fill.SetBackgroundColor(XLColor.Red);
+
+range.AddConditionalFormat().WhenNotError()
+    .Fill.SetBackgroundColor(XLColor.LightGreen);
+```
+
+## Date rules
+
+Highlight cells whose date value falls within a relative time period:
+
+```csharp
+var range = ws.Range("A1:A10");
+
+range.AddConditionalFormat()
+    .WhenDateIs(XLTimePeriod.Today)
+    .Fill.SetBackgroundColor(XLColor.LightGreen);
+
+range.AddConditionalFormat()
+    .WhenDateIs(XLTimePeriod.Yesterday)
+    .Fill.SetBackgroundColor(XLColor.Orange);
+
+range.AddConditionalFormat()
+    .WhenDateIs(XLTimePeriod.Tomorrow)
+    .Fill.SetBackgroundColor(XLColor.GrannySmithApple);
+
+range.AddConditionalFormat()
+    .WhenDateIs(XLTimePeriod.InTheLast7Days)
+    .Fill.SetBackgroundColor(XLColor.Blue);
+
+range.AddConditionalFormat()
+    .WhenDateIs(XLTimePeriod.ThisMonth)
+    .Fill.SetBackgroundColor(XLColor.Red);
+```
+
+All `XLTimePeriod` values: `Yesterday`, `Today`, `Tomorrow`, `InTheLast7Days`, `LastWeek`, `ThisWeek`, `NextWeek`, `LastMonth`, `ThisMonth`, `NextMonth`.
+
+## Formula-based rules
+
+Use `WhenIsTrue` to apply a format when an arbitrary formula evaluates to `TRUE`. The formula is evaluated relative to the top-left cell of the range.
+
+```csharp
+var range = ws.Range("A1:C10");
+
+// Highlight the entire row when column A is greater than 5
+range.AddConditionalFormat().WhenIsTrue("$A1>5")
+    .Fill.SetBackgroundColor(XLColor.LightYellow)
+    .Font.SetBold();
+```
+
+## Setting format properties
+
+The `When*` methods return `IXLStyle`, giving access to the same formatting options as regular cell styles.
+
+```csharp
+ws.RangeUsed().AddConditionalFormat().WhenStartsWith("Hell")
+    .Fill.SetBackgroundColor(XLColor.Red)
+    .Border.SetOutsideBorder(XLBorderStyleValues.Thick)
+    .Border.SetOutsideBorderColor(XLColor.Blue)
+    .Font.SetBold();
+```
+
+<Note>
+Conditional format styles support font, fill, and border. Not all style properties available on regular cells are supported in conditional format rules; unsupported properties are silently ignored by Excel.
+</Note>
+
+## Data bars
+
+Data bars display a proportional bar inside each cell based on its value relative to the range.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+ws.Range("A2:A6").Value = 1;
+ws.Range("A4:A4").Value = 2;
+ws.Range("A5:A5").Value = 3;
+ws.Range("A6:A6").Value = 4;
+
+// Automatic minimum and maximum
+ws.Range("A2:A6").AddConditionalFormat().DataBar(XLColor.Amber);
+
+// Explicit lowest/highest value
+ws.Range("B2:B6").AddConditionalFormat().DataBar(XLColor.BallBlue)
+    .LowestValue()
+    .HighestValue();
+
+// Numeric bounds
+ws.Range("C2:C6").AddConditionalFormat().DataBar(XLColor.Cadet)
+    .Minimum(XLCFContentType.Number, 0)
+    .Maximum(XLCFContentType.Number, 10);
+
+// Percent bounds
+ws.Range("D2:D6").AddConditionalFormat().DataBar(XLColor.Desert)
+    .Minimum(XLCFContentType.Percent, 50)
+    .Maximum(XLCFContentType.Percent, 100);
+
+// Formula bounds
+ws.Range("E2:E6").AddConditionalFormat().DataBar(XLColor.Ecru)
+    .Minimum(XLCFContentType.Formula, "-SUM($A$2:$E$2)")
+    .Maximum(XLCFContentType.Formula, "SUM($A$6:$E$6)");
+
+// Percentile bounds
+ws.Range("F2:F6").AddConditionalFormat().DataBar(XLColor.Fandango)
+    .Minimum(XLCFContentType.Percentile, 30)
+    .Maximum(XLCFContentType.Percentile, 70);
+
+wb.SaveAs("data-bars.xlsx");
+```
+
+### Negative values with separate colors
+
+```csharp
+// Separate colors for positive and negative bars
+ws.Range("A1:A4").AddConditionalFormat()
+    .DataBar(XLColor.Green, XLColor.Red, showBarOnly: false)
+    .LowestValue()
+    .HighestValue();
+
+// Bar only (hide cell value text)
+ws.Range("C1:C4").AddConditionalFormat()
+    .DataBar(XLColor.Green, XLColor.Red, showBarOnly: true)
+    .Minimum(XLCFContentType.Number, -100)
+    .Maximum(XLCFContentType.Number, 100);
+```
+
+## Color scales
+
+Color scales shade each cell with a color interpolated across a gradient, based on its value within the range.
+
+### Two-color scale
+
+```csharp
+ws.RangeUsed().AddConditionalFormat().ColorScale()
+    .Minimum(XLCFContentType.Number, "2", XLColor.Red)
+    .Maximum(XLCFContentType.Percentile, "90", XLColor.Green);
+```
+
+### Three-color scale (low / mid / high)
+
+```csharp
+ws.RangeUsed().AddConditionalFormat().ColorScale()
+    .LowestValue(XLColor.Red)
+    .Midpoint(XLCFContentType.Percent, "50", XLColor.Yellow)
+    .HighestValue(XLColor.Green);
+```
+
+### Minimum and maximum with HTML colors
+
+```csharp
+ws.RangeUsed().AddConditionalFormat().ColorScale()
+    .LowestValue(XLColor.FromHtml("#FFFF7128"))
+    .HighestValue(XLColor.FromHtml("#FFFFEF9C"));
+```
+
+## Icon sets
+
+Icon sets display a small icon inside each cell chosen from a set based on the cell's value.
+
+```csharp
+ws.RangeUsed().AddConditionalFormat()
+    .IconSet(XLIconSetStyle.ThreeTrafficLights2, reverseIconOrder: true, showIconOnly: true)
+    .AddValue(XLCFIconSetOperator.EqualOrGreaterThan, "0", XLCFContentType.Number)
+    .AddValue(XLCFIconSetOperator.EqualOrGreaterThan, "2", XLCFContentType.Number)
+    .AddValue(XLCFIconSetOperator.EqualOrGreaterThan, "3", XLCFContentType.Number);
+```
+
+### Available icon set styles
+
+| Value | Icons |
+|---|---|
+| `ThreeArrows` | 3 colored arrows |
+| `ThreeArrowsGray` | 3 gray arrows |
+| `ThreeFlags` | 3 flags |
+| `ThreeTrafficLights1` | 3 traffic lights (unrimmed) |
+| `ThreeTrafficLights2` | 3 traffic lights (rimmed) |
+| `ThreeSigns` | 3 shapes |
+| `ThreeSymbols` | 3 symbols with circles |
+| `ThreeSymbols2` | 3 symbols without circles |
+| `FourArrows` | 4 colored arrows |
+| `FourArrowsGray` | 4 gray arrows |
+| `FourRedToBlack` | 4 circles red to black |
+| `FourRating` | 4 bar rating |
+| `FourTrafficLights` | 4 traffic lights |
+| `FiveArrows` | 5 colored arrows |
+| `FiveArrowsGray` | 5 gray arrows |
+| `FiveRating` | 5 bar rating |
+| `FiveQuarters` | 5 quarter-fill circles |
+
+## Multiple rules on the same range
+
+You can add multiple conditional format rules to a range. Rules are evaluated in the order they were added.
+
+```csharp
+var range = ws.Range("A1:A10");
+
+range.AddConditionalFormat().WhenEquals("3")
+    .Fill.SetBackgroundColor(XLColor.Blue);
+
+range.AddConditionalFormat().WhenEquals("2")
+    .Fill.SetBackgroundColor(XLColor.Green);
+
+range.AddConditionalFormat().WhenEquals("1")
+    .Fill.SetBackgroundColor(XLColor.Red);
+```
+
+### Stop if true
+
+Use `SetStopIfTrue()` to prevent lower-priority rules from being evaluated when a rule matches:
+
+```csharp
+// First rule: if value > 5, stop evaluating further rules
+ws.RangeUsed().AddConditionalFormat().SetStopIfTrue().WhenGreaterThan(5);
+
+// Second rule: icon set (not applied to cells matched by the first rule)
+ws.RangeUsed().AddConditionalFormat()
+    .IconSet(XLIconSetStyle.ThreeTrafficLights2, true, true)
+    .AddValue(XLCFIconSetOperator.EqualOrGreaterThan, "0", XLCFContentType.Number)
+    .AddValue(XLCFIconSetOperator.EqualOrGreaterThan, "2", XLCFContentType.Number)
+    .AddValue(XLCFIconSetOperator.EqualOrGreaterThan, "3", XLCFContentType.Number);
+```
+
+## Copying a conditional format to another sheet
+
+```csharp
+var format = ws.RangeUsed().AddConditionalFormat().WhenEquals(1)
+    .Fill.SetBackgroundColor(XLColor.Red);
+
+// format is IXLStyle; get the parent conditional format via the range
+ws.ConditionalFormats.First().CopyTo(otherWorksheet);
+```

@@ -1,0 +1,177 @@
+---
+title: "Sorting"
+description: "Sort rows or columns in a worksheet range using ClosedXML's Sort API, with support for multi-column keys, custom order, and blank handling."
+---
+
+ClosedXML can sort a range of cells in a worksheet. Sorting is stable and follows the same type ordering as Excel.
+
+## Sorting algorithm
+
+Values are sorted first by type, then by value within each type:
+
+| Type | Notes |
+|------|-------|
+| Logical | `false` < `true` |
+| Number | Sorted by numeric value. DateTime and TimeSpan use their serial date-time value. |
+| Text | Sorted using the current culture. Empty string is the smallest text value. |
+| Error | Individual errors never change relative order during sorting. |
+| Blank | Always last, regardless of sort direction. |
+
+**Ascending order:** number → text → logical → error → blank
+
+**Descending order:** error → logical → text → number → blank
+
+<Note>
+  Sorting operates on cell values only. Sorting by cell color or font color is
+  not supported.
+</Note>
+
+### `matchCase` flag
+
+Controls whether text values are sorted case-sensitively:
+
+- `false` (default) — case-insensitive. `Hello`, `hello`, and `HELLO` are treated the same.
+- `true` — case-sensitive using the current culture.
+
+### `ignoreBlanks` flag
+
+Controls how blank cells are treated:
+
+- `true` (default) — blank cells are always placed last regardless of sort order.
+- `false` — blank cells are treated as empty string and sorted with text values.
+
+<Note>
+  An empty string can be entered into a cell by typing an apostrophe (`'`) and
+  pressing Enter. The `TYPE` function returns `2` (text) for such cells. The
+  apostrophe itself is a display style (`IXLStyle.IncludeQuotePrefix`), not
+  part of the value.
+</Note>
+
+---
+
+## Sorting rows
+
+Select the range to sort and call one of the `IXLRange.Sort()` overloads.
+
+### By column string expression
+
+```csharp
+IXLRange Sort(
+    string columnsToSortBy,
+    XLSortOrder sortOrder = XLSortOrder.Ascending,
+    bool matchCase = false,
+    bool ignoreBlanks = true)
+```
+
+The `columnsToSortBy` string is a comma-separated list of column references with optional sort direction:
+
+- **Column reference:** a number (`2`) or a letter (`B`). Letters are relative to the range — `C` in `B2:E7` refers to column `D` in the sheet.
+- **Direction:** `ASC` or `DESC` per column. If omitted, the `sortOrder` parameter is used.
+
+Examples:
+- `"1"` — sort by first column of the range, ascending
+- `"3 DESC, 2 DESC"` — sort by third column descending, then second column descending
+- `"B ASC, D DESC"` — sort by column B ascending, then column D descending
+
+### By column number
+
+```csharp
+IXLRange Sort(
+    int columnToSortBy,
+    XLSortOrder sortOrder = XLSortOrder.Ascending,
+    bool matchCase = false,
+    bool ignoreBlanks = true)
+```
+
+### Using `SortColumns` property
+
+Set sort keys on `IXLRange.SortColumns` and call `Sort()` without arguments to sort using those keys:
+
+```csharp
+range.SortColumns.Add(3, XLSortOrder.Descending);
+range.SortColumns.Add(2, XLSortOrder.Descending);
+range.Sort();
+```
+
+---
+
+### Multi-column sort example
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+ws.Column("D").Style.NumberFormat.SetNumberFormatId((int)XLPredefinedFormat.Number.PercentInteger);
+
+var range = ws.Cell("B3").InsertData(new[]
+{
+    new object[] { "Pastry",    "Sold", "Margin" },
+    new object[] { "Cake",      14,     0.25 },
+    new object[] { "Croissant", 15,     0.60 },
+    new object[] { "Fig Roll",  56,     0.50 },
+    new object[] { "Waffle",    74,     0.60 },
+});
+
+// Copy the range and sort the copy
+range.CopyTo(ws.Cell("F3"));
+var dataRangeOfCopy = ws.Range("F4:H7");
+
+// Sort by Margin descending, then by Sold descending
+dataRangeOfCopy.Sort("3 DESC, 2 DESC");
+wb.SaveAs("sort-rows-example.xlsx");
+```
+
+<Note>
+  The range passed to `Sort()` should contain only data rows — not the header
+  row. In the example above, `F4:H7` excludes the header at row 3.
+</Note>
+
+---
+
+## Sorting columns (left to right)
+
+When data is arranged in columns rather than rows, use `IXLRange.SortLeftToRight()`. Add sort keys to `IXLRange.SortRows` before calling it.
+
+<Note>
+  `SortLeftToRight` is more limited than row sorting — it can only sort by row
+  values. Use it when each column is a data point and you want to reorder
+  columns based on row values.
+</Note>
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+ws.Row(5).Style.NumberFormat.SetNumberFormatId((int)XLPredefinedFormat.Number.PercentInteger);
+
+var range = ws.Cell("B3").InsertData(new[]
+{
+    new object[] { "Pastry",  "Waffle", "Fig Roll", "Cake", "Croissant", },
+    new object[] { "Sold",         74,         56,     14,          15, },
+    new object[] { "Margin",     0.60,       0.50,   0.25,        0.60, },
+});
+
+range.CopyTo(ws.Cell("H3"));
+var dataRangeOfCopy = ws.Range("I3:L5");
+
+// Sort columns: first by row 3 (Margin) descending, then by row 2 (Sold) descending
+dataRangeOfCopy.SortRows.Add(3, XLSortOrder.Descending);
+dataRangeOfCopy.SortRows.Add(2, XLSortOrder.Descending);
+dataRangeOfCopy.SortLeftToRight();
+
+wb.SaveAs("sort-cols-example.xlsx");
+```
+
+---
+
+## Sorting via autofilter
+
+When working with an autofilter, use `IXLAutoFilter.Sort()` instead. This keeps the autofilter's sort state in sync with the sort indicator shown in the column header.
+
+```csharp
+// Sort autofilter data by column 1 ascending
+ws.AutoFilter.Sort(1, XLSortOrder.Ascending);
+```
+
+<Note>
+  Autofilter sorting is limited to one column. For multi-column sort, use
+  `IXLRange.Sort()` directly and manage the sort state manually.
+</Note>

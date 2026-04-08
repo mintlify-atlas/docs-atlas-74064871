@@ -1,0 +1,57 @@
+---
+title: "Introduction"
+description: "ClosedXML is a .NET library for reading, manipulating, and writing Excel 2007+ (.xlsx, .xlsm) files — no Excel required."
+---
+
+ClosedXML is a .NET library that wraps the low-level [OpenXML SDK](https://github.com/OfficeDev/Open-XML-SDK) with an intuitive, fluent API. You can create, read, and modify Excel spreadsheets in any .NET application without Microsoft Excel installed.
+
+The typical use case is generating Excel reports on a web server, but ClosedXML is equally suited for desktop tools, batch processing pipelines, and data export utilities.
+
+## Key capabilities
+
+- **Create workbooks from scratch** — add worksheets, set cell values, apply formulas, and save as `.xlsx` or `.xlsm`
+- **Read and modify existing files** — open any Excel 2007+ workbook and change values, styles, or structure
+- **Cell styling** — apply fonts, colors, borders, fills, and number formats through a fluent style API
+- **Tables and pivot tables** — create structured tables with sorting, filtering, and totals rows; summarize data with pivot tables
+- **Formulas** — write Excel formulas and evaluate them in .NET using 400+ supported functions
+- **Bulk data insertion** — populate worksheets from `IEnumerable` collections, `DataTable`, or `DataSet`
+- **AutoFilter and sorting** — add column filters with custom conditions and sort data in worksheets or tables
+- **Protection** — protect workbooks and worksheets with passwords
+- **Defined names** — create and resolve workbook-scoped and sheet-scoped named ranges
+- **Page setup** — configure margins, headers, footers, print areas, and paper size
+
+## .NET compatibility
+
+ClosedXML targets **.NET Standard 2.0** and runs on any compatible implementation:
+
+| Runtime | Minimum version |
+|---|---|
+| .NET (Core) | 2.0+ |
+| .NET Framework | 4.6.2+ |
+| Blazor | Supported |
+| Unity | Not supported |
+
+<Note>
+  ClosedXML does not work on Unity due to limitations in Unity's script engine.
+</Note>
+
+## License and source
+
+ClosedXML is released under the **MIT License**. The source code, issue tracker, and contribution guide are on GitHub:
+
+**[github.com/ClosedXML/ClosedXML](https://github.com/ClosedXML/ClosedXML)**
+
+## Thread safety
+
+ClosedXML is **not thread-safe**. Do not share a single `XLWorkbook` instance across multiple threads or perform parallel operations on the same workbook. The underlying OpenXML SDK is also not thread-safe. If you need to process multiple files concurrently, create a separate `XLWorkbook` instance per thread.
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Add ClosedXML to your project via NuGet in seconds.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create your first workbook with a step-by-step code walkthrough.
+  </Card>
+</CardGroup>

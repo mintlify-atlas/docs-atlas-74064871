@@ -1,0 +1,364 @@
+---
+title: "Migration Guides"
+description: "A consolidated overview of breaking changes across all ClosedXML releases from 0.100 through 0.106, with guidance on updating your code."
+---
+
+ClosedXML's public API is still evolving. Before upgrading, read the release notes and the relevant migration section below.
+
+<Note>
+Always read the migration guide for **every version** between your current version and the target version — not just the latest one. Changes are cumulative.
+</Note>
+
+## Breaking changes philosophy
+
+ClosedXML follows these principles when introducing breaking changes:
+
+- **Correctness over compatibility** — if the old behaviour was wrong (e.g. silently swallowing errors, returning `null` unexpectedly), the new behaviour throws an explicit exception.
+- **Strong typing** — untyped `object` APIs are replaced with strongly-typed alternatives to catch errors at compile time.
+- **Explicit over implicit** — operations that previously had hidden side-effects are made explicit (e.g. formula parsing, data type detection).
+
+## Version index
+
+<CardGroup cols={3}>
+  <Card title="0.100" href="#version-0100" icon="circle-arrow-right">
+    Strongly typed cell values, CalcEngine errors, XLEventTracking removal
+  </Card>
+  <Card title="0.101" href="#version-0101" icon="circle-arrow-right">
+    SixLabors.Fonts update, enum underlying type changes
+  </Card>
+  <Card title="0.102" href="#version-0102" icon="circle-arrow-right">
+    Sparse cell storage, array formula handling, fallback font improvements
+  </Card>
+  <Card title="0.103" href="#version-0103" icon="circle-arrow-right">
+    Defined names rename, AutoFilter API cleanup, sorting fix
+  </Card>
+  <Card title="0.104" href="#version-0104" icon="circle-arrow-right">
+    OpenXML SDK 3.0, .NET 4.62 minimum, null-returning APIs now throw
+  </Card>
+  <Card title="0.105" href="#version-0105" icon="circle-arrow-right">
+    Hyperlinks API moved, formula setter normalisation
+  </Card>
+  <Card title="0.106" href="#version-0106" icon="circle-arrow-right">
+    Number format corrections, exception type alignment
+  </Card>
+</CardGroup>
+
+---
+
+## Version 0.100
+
+*Migrating from 0.97 to 0.100.*  [GitHub release notes](https://github.com/ClosedXML/ClosedXML/releases/tag/0.100.0)
+
+<AccordionGroup>
+  <Accordion title="Strongly typed cell value (IXLCell.Value)">
+    `IXLCell.Value` and `IXLCell.CachedValue` are now of type `XLCellValue` instead of `object`. All cell value types (blank, logical, number, text, error) convert to `XLCellValue` via implicit cast operators.
+
+    The `Value` setter no longer accepts:
+
+    | Old usage | Replacement |
+    |-----------|-------------|
+    | `cell.Value = richText` | `cell.GetRichText().CopyFrom(richText)` |
+    | `cell.Value = dateTimeOffset` | `cell.Value = dateTimeOffset.Date` (implicit cast) |
+    | `cell.Value = guid` | `cell.Value = guid.ToString()` |
+    | `cell.Value = someIEnumerable` | `cell.InsertData(someIEnumerable)` |
+    | `cell.Value = someRange` | `cell.CopyFrom(someRange)` |
+    | `cell.Value = anyObject` | `cell.Value = anyObject.ToString()` |
+    | `cell.Value = double.NaN` | Not supported — throws `ArgumentException` |
+  </Accordion>
+
+  <Accordion title="SetDataType methods removed">
+    `SetDataType` has been removed from `IXLCell`, `IXLColumn`, `IXLColumns`, `IXLRange`, and all related interfaces. To change the data type, set a new value of the target type directly — type and value are now intrinsically linked.
+  </Accordion>
+
+  <Accordion title="Evaluate methods return XLCellValue">
+    `IXLWorkbook.Evaluate(string)`, `XLWorkbook.EvaluateExpr(string)`, and `IXLWorksheet.Evaluate(string, string)` now return `XLCellValue` instead of `object`.
+  </Accordion>
+
+  <Accordion title="CalcEngine errors are values, not exceptions">
+    Formula errors such as `#DIV/0!` are no longer thrown as exceptions. They are returned as `XLError` enum values and can be stored in cells.
+
+    ```csharp
+    // Errors are now valid return values — no exception is thrown
+    Assert.AreEqual(XLError.DivisionByZero, XLWorkbook.EvaluateExpr("1/0"));
+
+    // Unimplemented functions return XLError.NameNotRecognized
+    var wb = new XLWorkbook();
+    var ws = wb.AddWorksheet();
+    var cell = ws.Cell(1, 1);
+    cell.FormulaA1 = "RTD(\"stockprice.rtd\", \"NASD\", \"MSFT\")";
+    Assert.AreEqual(XLError.NameNotRecognized, cell.Value.GetError());
+    ```
+
+    `CalcEngineException` and all derived exception types have been removed. `XLError` has moved from `ClosedXML.Excel.CalcEngine` to `ClosedXML.Excel`.
+  </Accordion>
+
+  <Accordion title="Copy cell values — use CopyFrom">
+    To copy a cell including its conditional formatting, use `IXLCell.CopyFrom(IXLRangeBase)`:
+
+    ```csharp
+    var sourceCell = ws.Cell(1, 1);
+    var targetCell = ws.Cell(2, 1);
+    targetCell.CopyFrom(sourceCell.AsRange());
+    ```
+  </Accordion>
+
+  <Accordion title="Rich text connected to cell value">
+    `IXLRichText` is now directly connected to its cell. Mutating a rich text object immediately changes the cell value. To copy rich text from one cell to another, use `IXLRichText.CopyFrom`.
+  </Accordion>
+
+  <Accordion title="TryGetValue changes">
+    `IXLCell.TryGetValue<IXLRichText>` and `TryGetValue<XLHyperlink>` are no longer supported. Use `IXLCell.GetRichText()` or `IXLCell.GetHyperlink()` instead.
+  </Accordion>
+
+  <Accordion title="Cast errors throw InvalidCastException">
+    `IXLCell.GetBoolean()`, `GetDouble()`, `GetDateTime()`, `GetTimeSpan()`, and `GetValue<T>()` now throw `InvalidCastException` instead of `FormatException` when the value cannot be cast.
+  </Accordion>
+
+  <Accordion title="Boolean formatting change">
+    `IXLCell.GetFormattedString()` now formats booleans as `TRUE` / `FALSE` (Excel-compliant) instead of `True` / `False`.
+  </Accordion>
+
+  <Accordion title="XLEventTracking removed">
+    The `XLEventTracking` enum, `LoadOptions.EventTracking` property, and `XLWorkbook` constructors accepting `XLEventTracking` have been removed. Remove the argument from any `XLWorkbook` constructor calls and delete any `LoadOptions.EventTracking` assignments.
+  </Accordion>
+
+  <Accordion title="Pivot table API changes">
+    Methods on `IXLPivotValues` now use the **custom name** of a pivot value field instead of the source column name. `IXLPivotField.SelectedValues`, `AddSelectedValue`, and `AddSelectedValues` now use `XLCellValue` instead of `object`. The predicate in `IXLPivotValueStyleFormat.AndWith` also uses `XLCellValue`.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Version 0.101
+
+*Migrating from 0.100 to 0.101.*
+
+<AccordionGroup>
+  <Accordion title="SixLabors.Fonts updated to 1.0.0-beta19">
+    The `SixLabors.Fonts` dependency was bumped from `1.0.0-beta18` to `1.0.0-beta19` for bug fixes in font measurement. No API changes are required, but rebuilt font caches may produce slightly different text measurements.
+  </Accordion>
+
+  <Accordion title="Enum underlying type changed to byte">
+    `XLAlignmentReadingOrderValues`, `XLAlignmentHorizontalValues`, and `XLAlignmentVerticalValues` now use `byte` as their underlying type instead of `int`. This is a binary-breaking change for code that explicitly casts these enums to or from `int`.
+  </Accordion>
+
+  <Accordion title="Graphic engine: new IXLGraphicEngine.GetGlyphBox method">
+    A new method `IXLGraphicEngine.GetGlyphBox` has been added to the interface. If you have a custom `IXLGraphicEngine` implementation, you must add this method.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Version 0.102
+
+*Migrating from 0.101 to 0.102.*
+
+<AccordionGroup>
+  <Accordion title="Array formula braces now cause an exception">
+    Setting `IXLCell.FormulaA1` to a formula wrapped in braces (e.g. `{=1+2}`) will throw an exception during evaluation. Previously, the braces were silently stripped. Remove the braces from your formula strings.
+  </Accordion>
+
+  <Accordion title="Embedded fallback font — exception no longer thrown">
+    `DefaultGraphicEngine` no longer throws when both the requested font and the fallback font are missing. Instead, it falls back to a stripped Carlito font (Calibri-metric-compatible) embedded in the assembly. Column widths may differ slightly from before, but the exception is gone.
+  </Accordion>
+
+  <Accordion title="Cells stored in sparse arrays — IXLCell is now a proxy">
+    Cell content is stored in sparse arrays. Each call to `worksheet.Cell("A1")` returns a **new proxy object**:
+
+    ```csharp
+    var first = ws.Cell("A1");
+    var second = ws.Cell("A1");
+
+    // No longer true — use Equals instead of ==
+    if (first == second) { }
+
+    // Correct
+    if (first.Equals(second)) { }
+    ```
+
+    Additionally, a cached `IXLCell` reference does **not** follow the cell if rows or columns are inserted or deleted above/before it. Always re-fetch the cell after structural changes.
+  </Accordion>
+
+  <Accordion title="AddWorksheet table name is now auto-generated">
+    `IXLWorkbook.AddWorksheet(DataTable)` and its overloads now assign an auto-generated table name (`Table1`, `Table2`, …) instead of reusing the sheet name. Use the new overload `AddWorksheet(DataTable, string sheetName, string tableName)` to specify the table name explicitly.
+
+    ```csharp
+    var dt = new DataTable("Patients table");
+    dt.Columns.Add("Patient", typeof(string));
+    dt.Rows.Add("David");
+
+    using var wb = new XLWorkbook();
+    // Table name is now "Table1", not "Patients table"
+    var ws = wb.AddWorksheet(dt);
+
+    // Explicit table name
+    var ws2 = wb.AddWorksheet(dt, "Sheet name", "PatientsTable");
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Version 0.103
+
+*Migrating from 0.102 to 0.103.*
+
+<AccordionGroup>
+  <Accordion title="IXLNamedRange renamed to IXLDefinedName">
+    Interfaces and members have been renamed to better reflect the Open XML specification:
+
+    | Old name | New name |
+    |----------|----------|
+    | `IXLNamedRange` | `IXLDefinedName` |
+    | `IXLNamedRanges` | `IXLDefinedNames` |
+
+    Properties and method names containing `NamedRange` have been renamed to `DefinedName` and marked `[Obsolete]`. Migrate to the new names before the obsolete members are removed.
+
+    `IXLDefinedName.RefersTo` is now the source of truth for the formula. The formula is parsed and validated on assignment. The redundant leading `=` sign is automatically stripped.
+
+    `IXLDefinedName.Clear()` has been removed. Methods for adding/removing individual ranges from the formula have also been removed — build the full formula string and set it via `IXLDefinedName.SetRefersTo(string)`.
+  </Accordion>
+
+  <Accordion title="Null-returning APIs now throw ArgumentException">
+    Several methods that previously returned `null` when an element was not found now throw `ArgumentException`:
+
+    - `IXLWorksheet.Cell(string)` — for invalid addresses
+    - `IXLWorksheet.NamedRange(string)` — throws `KeyNotFoundException`
+    - `IXLWorksheet.Range(string)` — for invalid range addresses
+    - `IXLNamedRanges.NamedRange(string)` — throws `ArgumentException`
+
+    Use `TryGetValue`, `Contains`, or check existence before calling these methods.
+  </Accordion>
+
+  <Accordion title="AutoFilter API cleanup">
+    Several AutoFilter setters have been removed. Use the fluent `IXLFilterColumn` methods to configure filters:
+
+    - `IXLAutoFilter.Range`, `SortColumn`, `Sorted`, `SortOrder` setters removed.
+    - `IXLFilterColumn.FilterType`, `TopBottomValue`, `TopBottomType`, `TopBottomPart`, `DynamicType`, `DynamicValue` setters and their `Set*` equivalents removed.
+    - `IXLFilterColumn.AddFilter` parameter type changed from `T : IComparable<T>` to `XLCellValue`.
+    - New `reapply` parameter (default `true`) added to filter-modifying methods.
+    - `XLFilterType.DateTimeGrouping` removed — date-time grouping is now part of `XLFilterType.Regular`.
+    - `IXLDateTimeGroupFilteredColumn` merged into `IXLFilteredColumn`.
+  </Accordion>
+
+  <Accordion title="Sorting algorithm matches Excel">
+    The sort order is now: numbers → text → logical → error → blanks. Blanks are always last regardless of sort direction (unless `ignoreBlanks` is `false`). `IXLSortElement` properties no longer have setters. The unused `XLSortOrientation` enum has been deleted.
+  </Accordion>
+
+  <Accordion title="IXLPhonetic setters removed">
+    `IXLPhonetic.Text`, `IXLPhonetic.Start`, and `IXLPhonetic.End` no longer have setters. Use `IXLPhonetics.ClearText()` and `IXLPhonetics.Add(string text, int start, int end)` to update phonetic hints.
+  </Accordion>
+
+  <Accordion title="Pivot table changes">
+    - `XLSubtotalFunction.None` removed.
+    - `XLSubtotalFunction.Maximum` and `XLSubtotalFunction.Minimum` have swapped positions in the enum.
+    - `IXLPivotField.Subtotals` is now a read-only list.
+    - Pivot table filter area styling throws `NotImplementedException` — will be re-implemented in a later release.
+    - `IXLPivotTables.Add` now automatically promotes a range to its underlying table as the pivot cache source if one exists.
+  </Accordion>
+
+  <Accordion title="IXLStyle.Equals compares style properties only">
+    `IXLStyle.Equals` now compares purely by style property values. Previously it also checked the container reference, making two logically identical styles unequal.
+  </Accordion>
+
+  <Accordion title="Worksheet name changes update formulas">
+    Setting `IXLWorksheet.Name` now updates all formulas and defined names that reference the old sheet name.
+  </Accordion>
+
+  <Accordion title="IXLPageSetup.FirstPageNumber uses int">
+    `IXLPageSetup.FirstPageNumber` and `SetFirstPageNumber(int)` now use `int` instead of `uint`.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Version 0.104
+
+*Migrating from 0.103 to 0.104.*
+
+<AccordionGroup>
+  <Accordion title="OpenXML SDK upgraded to 3.0 — .NET 4.62 minimum">
+    The `DocumentFormat.OpenXml` dependency was upgraded from 2.x to 3.0. The minimum supported .NET Framework version is now **net462** (previously net461). Update your project's target framework if needed.
+  </Accordion>
+
+  <Accordion title="More APIs throw instead of returning null">
+    Continuing the trend from 0.103, additional methods now throw `ArgumentException` instead of returning `null`:
+
+    - `IXLWorksheet.Cell(string)` — invalid A1 address or named range
+    - `IXLWorksheet.NamedRange(string)` — named range not found
+    - `IXLWorksheet.Range(string)` — invalid range address or named range
+    - `IXLNamedRanges.NamedRange(string)` — named range not found
+
+    Use `TryGetValue` or `Contains` to check for existence before accessing.
+  </Accordion>
+
+  <Accordion title="IXLPivotTables.Add prefers table source">
+    `IXLPivotTables.Add` now always checks whether a table covers the same area as the passed range. If one is found, the table itself becomes the pivot cache source. This generally has no effect unless the table grows after the pivot is created.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Version 0.105
+
+*Migrating from 0.104 to 0.105.*
+
+<AccordionGroup>
+  <Accordion title="IXLRangeBase.Hyperlinks moved to IXLWorksheet.Hyperlinks">
+    `IXLRangeBase.Hyperlinks` has been removed. Access and manage hyperlinks through `IXLWorksheet.Hyperlinks` instead. The worksheet-level collection supports removal, which the old property did not.
+  </Accordion>
+
+  <Accordion title="IXLHyperlinks API changes">
+    - `IXLHyperlinks.Add(XLHyperlink)` removed — there was no valid way to supply the required range.
+    - `IXLHyperlinks.TryDelete` removed — it was identical to `Delete`.
+    - `IXLHyperlinks.Delete` now returns `bool` (was `void`). `true` means the hyperlink existed and was removed.
+  </Accordion>
+
+  <Accordion title="Formula setters strip whitespace and leading equals sign">
+    `IXLCell.FormulaA1`, `IXLCell.FormulaR1C1`, and `IXLRangeBase.FormulaArrayA1` now trim whitespace and remove a leading `=` automatically. A formula like `" = A1+B4 "` becomes `"A1+B4"`. This prevents parse errors that were previously hidden.
+  </Accordion>
+
+  <Accordion title="Function behaviour changes">
+    - `CHAR` now interprets values using Windows-1252 encoding (was Unicode codepoints).
+    - `DOLLAR` now uses the workbook's culture, not `CultureInfo.CurrentCulture`.
+    - Formula setters automatically add the `_xlfn.` prefix for future functions (e.g. `CONCAT` → `_xlfn.CONCAT`) as required by the Open XML specification.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Version 0.106
+
+*Migrating from 0.105 to 0.106.*
+
+<AccordionGroup>
+  <Accordion title="Number format: Format property always returns a value">
+    `IXLNumberFormatBase.Format` previously returned an empty string for predefined formats. It now returns the actual format code (e.g. `"General"`, `"0.00"`) even for built-in formats.
+  </Accordion>
+
+  <Accordion title="Number format ID setter validates input">
+    `IXLNumberFormatBase.NumberFormatId`, `IXLNumberFormat.SetNumberFormatId(int)`, and `IXLPivotValueFormat.SetNumberFormatId(int)` now throw `ArgumentOutOfRangeException` when the supplied ID is not a valid predefined format from `XLPredefinedFormat`.
+  </Accordion>
+
+  <Accordion title="IXLAlignment.TextRotation throws ArgumentOutOfRangeException">
+    Setting an invalid rotation value on `IXLAlignment.TextRotation` now throws `ArgumentOutOfRangeException` instead of `ArgumentException`. Update any `catch (ArgumentException)` blocks that handled rotation errors specifically.
+  </Accordion>
+
+  <Accordion title="IXLWorksheets.Worksheet throws KeyNotFoundException">
+    `IXLWorksheets.Worksheet(string sheetName)` now throws `KeyNotFoundException` when the sheet is not found, replacing the previous `ArgumentException`. This aligns with the pattern used by all other unique-name collection lookups. Update any `catch` blocks accordingly.
+  </Accordion>
+
+  <Accordion title="IXLDefinedName.RefersTo rejects empty values">
+    The setter `IXLDefinedName.RefersTo` now throws `ArgumentException` when you attempt to set an empty or whitespace-only string.
+  </Accordion>
+
+  <Accordion title="IXLRangeBase.SetDataValidation removed">
+    The obsolete `IXLRangeBase.SetDataValidation` and `IXLCell.SetDataValidation` methods have been removed. Use `GetDataValidation()` to access an existing rule or `CreateDataValidation()` to create a new one.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## GitHub releases
+
+Full release notes, changelogs, and binary downloads are available on the [ClosedXML GitHub releases page](https://github.com/ClosedXML/ClosedXML/releases).

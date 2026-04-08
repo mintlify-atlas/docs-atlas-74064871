@@ -1,0 +1,69 @@
+---
+title: "Installation"
+description: "Add ClosedXML to your .NET project via NuGet using the .NET CLI or Package Manager Console."
+---
+
+## Install via .NET CLI
+
+Run the following command in your project directory:
+
+```bash
+dotnet add package ClosedXML
+```
+
+## Install via Package Manager Console
+
+Run the following command in the Visual Studio Package Manager Console:
+
+```powershell
+Install-Package ClosedXML
+```
+
+## SixLabors.Fonts dependency
+
+ClosedXML depends on `SixLabors.Fonts`, which is only available as a beta package. If your project uses the legacy `packages.config` NuGet restore format, the dependency resolution ignores prerelease packages and installation fails with:
+
+```
+Unable to resolve dependency 'SixLabors.Fonts'. Source(s) used: 'nuget.org', 'Microsoft Visual Studio Offline Packages'.
+```
+
+Choose one of the following solutions to resolve this:
+
+<AccordionGroup>
+  <Accordion title="Migrate to PackageReference (recommended)">
+    `packages.config` has been deprecated for years. Migrating to `PackageReference` resolves the error and is better in every way — it works on .NET Framework too.
+
+    See Microsoft's guide: [Migrate from packages.config to PackageReference](https://learn.microsoft.com/en-us/nuget/consume-packages/migrate-packages-config-to-package-reference)
+  </Accordion>
+
+  <Accordion title="Install SixLabors.Fonts first">
+    Install the `SixLabors.Fonts` beta package explicitly before installing ClosedXML. This works even with `packages.config`:
+
+    ```powershell
+    Install-Package SixLabors.Fonts -IncludePrerelease
+    Install-Package ClosedXML
+    ```
+  </Accordion>
+
+  <Accordion title="Use the -IncludePrerelease flag">
+    Pass the `-IncludePrerelease` switch when installing ClosedXML from the Package Manager Console:
+
+    ```powershell
+    Install-Package ClosedXML -IncludePrerelease
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Compatible .NET implementations
+
+ClosedXML targets **.NET Standard 2.0** and runs on any compatible implementation:
+
+| Runtime | Minimum version |
+|---|---|
+| .NET (Core) | 2.0+ |
+| .NET Framework | 4.6.2+ |
+| Blazor | Supported |
+
+<Warning>
+  ClosedXML does not work on Unity. Unity's script engine is not compatible with the library.
+</Warning>

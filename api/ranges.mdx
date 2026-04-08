@@ -1,0 +1,498 @@
+---
+title: "Ranges, rows, and columns"
+description: "Working with IXLRange, IXLRow, IXLColumn, and the shared IXLRangeBase interface for bulk cell operations."
+---
+
+ClosedXML represents rectangular selections as ranges. `IXLRangeBase` is the common base for worksheets, ranges, rows, and columns. `IXLRange` is the primary concrete type you work with. `IXLRow` and `IXLColumn` are worksheet-wide single rows and columns.
+
+## IXLRange — creating ranges
+
+```csharp
+// From a worksheet — address string
+IXLRange r = ws.Range("A1:C5");
+
+// From a worksheet — two address strings
+IXLRange r = ws.Range("A1", "C5");
+
+// From a worksheet — row/column numbers (1-based)
+IXLRange r = ws.Range(1, 1, 5, 3);   // (firstRow, firstCol, lastRow, lastCol)
+
+// From a worksheet — two cell references
+IXLRange r = ws.Range(ws.Cell("A1"), ws.Cell("C5"));
+
+// From a worksheet — IXLRangeAddress
+IXLRange r = ws.Range(address);
+
+// Multiple disconnected ranges
+IXLRanges rs = ws.Ranges("A1:B2,D4:E6");
+
+// Sub-range relative to another range
+IXLRange sub = range.Range("B2:C3");    // addresses relative to range origin
+IXLRange sub = range.Range(2, 2, 3, 3);
+
+// Bounding box of used cells
+IXLRange? used = ws.RangeUsed();
+IXLRange  used = range.RangeUsed();    // on IXLRange
+```
+
+## IXLRangeBase — shared members
+
+All range types (`IXLRange`, `IXLRow`, `IXLColumn`, `IXLRangeRow`, `IXLRangeColumn`, and `IXLWorksheet`) inherit from `IXLRangeBase`.
+
+### Address and worksheet
+
+```csharp
+IXLRangeAddress address = range.RangeAddress;
+IXLWorksheet    ws      = range.Worksheet;
+```
+
+### Setting values in bulk
+
+```csharp
+// Set the same value on every cell in the range
+range.Value = "N/A";
+range.Value = 0;
+
+// Set via fluent method
+IXLRangeBase updated = range.SetValue(42);
+
+// Set a formula on every cell
+range.FormulaA1      = "SUM(A1:A10)";  // regular formula
+range.FormulaR1C1    = "SUM(R1C1:R10C1)";
+range.FormulaArrayA1 = "MMULT(A1:B2, C1:D2)"; // array formula for entire range
+```
+
+### Cells iteration
+
+```csharp
+// All cells (including blank formatted cells)
+IXLCells cells = range.Cells();
+
+// Only cells with content (blank formatted-only cells excluded)
+IXLCells used = range.CellsUsed();
+IXLCells used = range.CellsUsed(XLCellsUsedOptions.AllContents);
+
+// With a predicate
+IXLCells filtered = range.Cells(cell => cell.Value.IsNumber);
+IXLCells filtered = range.CellsUsed(cell => cell.GetValue<double>() > 0);
+
+// By address sub-string within the range
+IXLCells subset = range.Cells("A1:B3");
+```
+
+### Searching
+
+```csharp
+IXLCells found = range.Search("keyword");
+IXLCells found = range.Search("keyword",
+    CompareOptions.IgnoreCase,
+    searchFormulae: false);
+```
+
+### Boundary cells
+
+```csharp
+IXLCell first     = range.FirstCell();
+IXLCell last      = range.LastCell();
+IXLCell firstUsed = range.FirstCellUsed();
+IXLCell lastUsed  = range.LastCellUsed();
+
+// With options
+IXLCell firstUsed = range.FirstCellUsed(XLCellsUsedOptions.AllContents);
+IXLCell firstUsed = range.FirstCellUsed(cell => cell.Value.IsText);
+```
+
+### Containment and intersection
+
+```csharp
+bool contains    = range.Contains("B2");
+bool contains    = range.Contains(otherRange);
+bool contains    = range.Contains(cell);
+bool intersects  = range.Intersects("C3:D4");
+bool intersects  = range.Intersects(otherRange);
+
+IXLRangeAddress overlap = range.Intersection(otherRange);
+IXLCells        union   = range.Union(otherRange);
+IXLCells        diff    = range.Difference(otherRange);
+```
+
+### Shape queries
+
+```csharp
+bool isEntireRow    = range.IsEntireRow();
+bool isEntireColumn = range.IsEntireColumn();
+bool isEntireSheet  = range.IsEntireSheet();
+bool isEmpty        = range.IsEmpty();
+bool isEmpty        = range.IsEmpty(XLCellsUsedOptions.AllContents);
+bool isMerged       = range.IsMerged();
+```
+
+### Grow and shrink
+
+```csharp
+IXLRangeBase grown   = range.Grow();          // expand by 1 cell on each side
+IXLRangeBase grown   = range.Grow(2);
+IXLRangeBase shrunk  = range.Shrink();        // contract by 1 cell from each side
+IXLRangeBase shrunk  = range.Shrink(2);
+```
+
+### Merging and unmerging
+
+```csharp
+// Merge — only the top-left cell value is kept
+IXLRange merged = range.Merge();
+IXLRange merged = range.Merge(checkIntersect: true); // throws if overlaps another merge
+
+// Unmerge
+IXLRange unmerged = range.Unmerge();
+```
+
+### Styling the range
+
+```csharp
+range.Style.Font.Bold = true;
+range.Style.Fill.BackgroundColor = XLColor.LightBlue;
+range.Style.NumberFormat.Format = "#,##0";
+range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+```
+
+### Defined names
+
+```csharp
+IXLRange named = range.AddToNamed("MyRange");
+IXLRange named = range.AddToNamed("MyRange", XLScope.Worksheet);
+IXLRange named = range.AddToNamed("MyRange", XLScope.Workbook, "Sales data");
+```
+
+### Auto filter and data validation
+
+```csharp
+IXLAutoFilter   af = range.SetAutoFilter();
+IXLDataValidation dv = range.GetDataValidation();
+IXLDataValidation dv = range.CreateDataValidation();
+```
+
+## Clearing a range
+
+```csharp
+range.Clear();                              // clear everything
+range.Clear(XLClearOptions.Contents);       // values and formulas only
+range.Clear(XLClearOptions.Formats);        // styles only
+range.Clear(XLClearOptions.Comments);       // comments only
+range.Clear(XLClearOptions.All);            // equivalent to parameterless overload
+range.DeleteComments();                     // remove all comments
+```
+
+`XLClearOptions` is a flags enum — combine values with `|`:
+
+```csharp
+range.Clear(XLClearOptions.Contents | XLClearOptions.Comments);
+```
+
+## Inserting rows and columns
+
+```csharp
+// Insert above/below this range (range is NOT expanded)
+IXLRangeRows insertedRows = range.InsertRowsAbove(3);
+IXLRangeRows insertedRows = range.InsertRowsBelow(3);
+
+// Insert and expand the range to include the new rows
+IXLRangeRows insertedRows = range.InsertRowsAbove(3, expandRange: true);
+
+// Insert left/right of this range
+IXLRangeColumns insertedCols = range.InsertColumnsBefore(2);
+IXLRangeColumns insertedCols = range.InsertColumnsAfter(2);
+IXLRangeColumns insertedCols = range.InsertColumnsBefore(2, expandRange: true);
+```
+
+## Deleting a range
+
+```csharp
+// Delete the range and shift surrounding cells
+range.Delete(XLShiftDeletedCells.ShiftCellsUp);
+range.Delete(XLShiftDeletedCells.ShiftCellsLeft);
+```
+
+## Sorting a range
+
+```csharp
+// Sort by all columns ascending
+range.Sort();
+
+// Sort by specific columns (1-based, relative to range)
+range.Sort("2 DESC, 1");              // second column descending, then first ascending
+range.Sort(2, XLSortOrder.Descending);
+
+// Sort columns left-to-right
+range.SortLeftToRight();
+range.SortLeftToRight(XLSortOrder.Descending);
+```
+
+## Transposing a range
+
+```csharp
+range.Transpose(XLTransposeOptions.MoveCells);    // shift outside cells to make room
+range.Transpose(XLTransposeOptions.ReplaceCells); // overwrite outside cells
+```
+
+## Converting to a table
+
+```csharp
+// Treat range as a table (not registered in Tables list)
+IXLTable t = range.AsTable();
+IXLTable t = range.AsTable("MyTable");
+
+// Create and register as an Excel table
+IXLTable t = range.CreateTable();
+IXLTable t = range.CreateTable("MyTable");
+```
+
+## Copying a range
+
+```csharp
+IXLRange copy = range.CopyTo(targetCell);   // copy to area starting at target cell
+IXLRange copy = range.CopyTo(targetRange);  // copy into target range base
+```
+
+## Row and column iteration in a range
+
+```csharp
+// All rows in a range
+IXLRangeRows rows = range.Rows();
+
+// Specific rows (1-based relative to range)
+IXLRangeRows rows = range.Rows(2, 5);
+IXLRangeRows rows = range.Rows("2:4");
+
+// First / last row
+IXLRangeRow firstRow = range.FirstRow();
+IXLRangeRow lastRow  = range.LastRow();
+IXLRangeRow firstUsed = range.FirstRowUsed();
+IXLRangeRow lastUsed  = range.LastRowUsed();
+
+// Rows matching a predicate
+IXLRangeRows used = range.RowsUsed();
+IXLRangeRows used = range.RowsUsed(XLCellsUsedOptions.AllContents);
+IXLRangeRows used = range.RowsUsed(row => row.Cell(1).Value.IsText);
+
+// All columns in a range
+IXLRangeColumns cols = range.Columns();
+IXLRangeColumns cols = range.Columns(1, 3);
+IXLRangeColumns cols = range.Columns("A", "C");
+IXLRangeColumns used = range.ColumnsUsed();
+```
+
+## IXLRow
+
+`IXLRow` represents an entire worksheet row. It extends `IXLRangeBase`.
+
+```csharp
+IXLRow row = ws.Row(5);
+```
+
+| Member | Signature | Description |
+|---|---|---|
+| `Height` | `double` | Row height in points. |
+| `IsHidden` | `bool` | Whether the row is hidden. |
+| `OutlineLevel` | `int` | Outline (grouping) level. |
+| `RowNumber()` | `int` | 1-based row number. |
+| `Cell(int)` | `IXLCell` | Cell at the given column number. |
+| `Cell(string)` | `IXLCell` | Cell at the given column letter. |
+| `Cells(string)` | `IXLCells` | Cells by address notation, e.g. `"1:5"`. |
+| `Cells(int, int)` | `IXLCells` | Cells from first to last column. |
+| `ClearHeight()` | `void` | Reset to the worksheet default height. |
+| `Delete()` | `void` | Delete the row and shift rows below up. |
+| `InsertRowsAbove(int)` | `IXLRows` | Insert rows above this one. |
+| `InsertRowsBelow(int)` | `IXLRows` | Insert rows below this one. |
+| `AdjustToContents()` | `IXLRow` | Auto-fit height to cell content. |
+| `Hide()` / `Unhide()` | `IXLRow` | Hide or show the row. |
+| `Group()` / `Ungroup()` | `IXLRow` | Add or remove from outline group. |
+| `Collapse()` / `Expand()` | `IXLRow` | Collapse or expand grouped rows. |
+| `RowAbove()` / `RowBelow()` | `IXLRow` | Navigate to adjacent rows. |
+| `RowUsed()` | `IXLRangeRow` | Used portion of this row. |
+| `AddHorizontalPageBreak()` | `IXLRow` | Insert a horizontal page break after this row. |
+| `Clear(XLClearOptions)` | `IXLRow` | Clear contents of the row. |
+
+## IXLColumn
+
+`IXLColumn` represents an entire worksheet column. It extends `IXLRangeBase`.
+
+```csharp
+IXLColumn col = ws.Column(3);
+IXLColumn col = ws.Column("C");
+```
+
+| Member | Signature | Description |
+|---|---|---|
+| `Width` | `double` | Column width in number-of-characters units. |
+| `IsHidden` | `bool` | Whether the column is hidden. |
+| `OutlineLevel` | `int` | Outline (grouping) level. |
+| `ColumnNumber()` | `int` | 1-based column number. |
+| `ColumnLetter()` | `string` | Column letter (e.g. `"C"`). |
+| `Cell(int)` | `IXLCell` | Cell at the given row number. |
+| `Cells(string)` | `IXLCells` | Cells by address notation, e.g. `"1:5"`. |
+| `Cells(int, int)` | `IXLCells` | Cells from first to last row. |
+| `Delete()` | `void` | Delete the column and shift columns right. |
+| `InsertColumnsBefore(int)` | `IXLColumns` | Insert columns to the left. |
+| `InsertColumnsAfter(int)` | `IXLColumns` | Insert columns to the right. |
+| `AdjustToContents()` | `IXLColumn` | Auto-fit width to cell content. |
+| `Hide()` / `Unhide()` | `IXLColumn` | Hide or show the column. |
+| `Group()` / `Ungroup()` | `IXLColumn` | Add or remove from outline group. |
+| `Collapse()` / `Expand()` | `IXLColumn` | Collapse or expand grouped columns. |
+| `ColumnLeft()` / `ColumnRight()` | `IXLColumn` | Navigate to adjacent columns. |
+| `ColumnUsed()` | `IXLRangeColumn` | Used portion of this column. |
+| `AddVerticalPageBreak()` | `IXLColumn` | Insert a vertical page break after this column. |
+| `Clear(XLClearOptions)` | `IXLColumn` | Clear contents of the column. |
+| `Sort(XLSortOrder, bool, bool)` | `IXLColumn` | Sort cells in this column. |
+
+## XLCellsUsedOptions
+
+Controls what "used" means when filtering cells, rows, and columns.
+
+```csharp
+[Flags]
+public enum XLCellsUsedOptions
+{
+    NormalFormats    = 1 << 0,  // cells with non-default styles
+    MergedCells      = 1 << 1,  // merged cells
+    Comments         = 1 << 2,  // cells with comments
+    Hyperlinks       = 1 << 3,  // cells with hyperlinks
+    DataValidation   = 1 << 4,  // cells with data validation
+    AllFormats       = NormalFormats | MergedCells | Comments | Hyperlinks | DataValidation,
+    AllContents      = ...,     // cells with values or formulas (most common)
+}
+```
+
+## Code examples
+
+### Iterate cells in a range
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook("data.xlsx");
+var ws = wb.Worksheet(1);
+
+foreach (var cell in ws.Range("A1:C10").CellsUsed())
+{
+    Console.WriteLine($"{cell.Address}: {cell.Value}");
+}
+```
+
+### Set a value across a range
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Sheet1");
+
+// Fill B2:D4 with 0
+ws.Range("B2:D4").Value = 0;
+
+// Bold the header row
+ws.Range("A1:D1").Style.Font.Bold = true;
+
+wb.SaveAs("output.xlsx");
+```
+
+### Merge header cells
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Report");
+
+ws.Range("A1:D1").Merge();
+ws.Cell("A1").Value = "Q1 Sales Report";
+ws.Cell("A1").Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+wb.SaveAs("report.xlsx");
+```
+
+### Insert and delete rows
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook("data.xlsx");
+var ws = wb.Worksheet(1);
+
+// Insert 2 rows above row 5
+ws.Row(5).InsertRowsAbove(2);
+
+// Delete rows 10 through 12 efficiently using range delete
+ws.Range(10, 1, 12, ws.ColumnCount()).Delete(XLShiftDeletedCells.ShiftCellsUp);
+
+wb.Save();
+```
+
+### Auto-fit column widths
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Data");
+
+ws.Cell("A1").Value = "First Name";
+ws.Cell("B1").Value = "Last Name";
+
+// Auto-fit after populating data
+ws.Column("A").AdjustToContents();
+ws.Column("B").AdjustToContents();
+
+wb.SaveAs("data.xlsx");
+```
+
+### Group rows for outlining
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Summary");
+
+// Group detail rows 2-5 at outline level 1
+ws.Rows(2, 5).Group();
+
+// Collapse the group
+ws.Row(2).Group(collapse: true);
+
+wb.SaveAs("summary.xlsx");
+```
+
+### Find the used range and iterate rows
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook("report.xlsx");
+var ws = wb.Worksheet(1);
+
+var used = ws.RangeUsed();
+if (used is null) return;
+
+// Skip header (row 1 of the range), process data rows
+foreach (var row in used.RowsUsed().Skip(1))
+{
+    string name  = row.Cell(1).GetValue<string>();
+    decimal sales = row.Cell(2).GetValue<decimal>();
+    Console.WriteLine($"{name}: {sales:C}");
+}
+```
+
+### Clear only content, preserve formatting
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook("template.xlsx");
+var ws = wb.Worksheet("Data");
+
+// Remove values and formulas but keep styles and borders
+ws.Range("B2:F50").Clear(XLClearOptions.Contents);
+
+wb.SaveAs("cleared.xlsx");
+```

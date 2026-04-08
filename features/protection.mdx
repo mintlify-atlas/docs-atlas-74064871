@@ -1,0 +1,188 @@
+---
+title: "Protection"
+description: "Protect workbooks and worksheets from accidental modification using ClosedXML's protection API, including password hashing and fine-grained element control."
+---
+
+Excel can protect a workbook against accidental modification. ClosedXML exposes protection at two levels: workbook (structure) and worksheet (cell contents and operations).
+
+<Warning>
+  Protection in Excel is not a security mechanism. It stores only a salt and a
+  password hash in the `.xlsx` file. Anyone can remove protection by unzipping
+  the file and editing the XML. Use protection only to prevent accidental edits,
+  not to secure confidential data.
+</Warning>
+
+<Note>
+  ClosedXML itself does not enforce protection — all API operations on a
+  protected workbook or worksheet succeed regardless of protection settings.
+  Protection takes effect only when the file is opened in Excel.
+</Note>
+
+---
+
+## Protection API design
+
+The API is designed around **allowed** elements, not protected elements. This results in counter-intuitive naming:
+
+| Call | Meaning in Excel |
+|------|-----------------|
+| `Protect(XLWorkbookProtectionElements.None)` | Nothing is allowed to change (everything is locked) |
+| `Protect(XLWorkbookProtectionElements.Everything)` | Everything is allowed to change (nothing is locked) |
+
+Always use the named `allowedElements` parameter to make intent clear.
+
+---
+
+## Password algorithms
+
+Each `Protect` method accepts an optional password and hash algorithm. Two algorithms are available:
+
+| Algorithm | Notes |
+|-----------|-------|
+| `XLProtectionAlgorithm.Algorithm.SimpleHash` | Default. Legacy Excel-compatible hash. Fast to crack. |
+| `XLProtectionAlgorithm.Algorithm.SHA512` | Recommended. Stronger hash, but still susceptible to dictionary attacks. |
+
+<Warning>
+  All available hash algorithms are optimized for speed, which makes them
+  vulnerable to password crackers. Do not use Excel protection to secure
+  sensitive data. Prefer SHA512 over SimpleHash when protection is needed.
+</Warning>
+
+---
+
+## Workbook protection
+
+Workbook protection prevents users from adding, deleting, or renaming worksheets. It is configured with `IXLWorkbook.Protect()` using the `XLWorkbookProtectionElements` flag enum.
+
+### `XLWorkbookProtectionElements` values
+
+| Value | Description |
+|-------|-------------|
+| `None` | No changes are allowed (structure and windows are locked). |
+| `Structure` | Allow changes to the workbook structure (add/remove/rename sheets). |
+| `Windows` | Allow moving, resizing, hiding, or closing the workbook window. Deprecated in modern Excel, but still part of the standard. |
+| `Everything` | Allow all changes (`Structure | Windows`). |
+
+<Note>
+  It is recommended to always allow `Windows` when protecting workbooks, since
+  that option is deprecated and blocking it has no effect in modern Excel
+  while it was meaningful in Excel 2007–2011.
+</Note>
+
+```csharp
+var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Protect workbook structure with a password, allowing only window operations
+wb.Protect(
+    "Pa55w0rD",
+    XLProtectionAlgorithm.Algorithm.SHA512,
+    allowedElements: XLWorkbookProtectionElements.Windows);
+
+Assert.IsTrue(wb.IsProtected);
+Assert.IsTrue(wb.IsPasswordProtected);
+
+wb.SaveAs("protect-workbook.xlsx");
+```
+
+When opened in Excel, the protected workbook grays out the "+" button for adding sheets and shows an error when the user tries to rename a sheet.
+
+### Removing workbook protection
+
+```csharp
+// Remove protection (supply password if the workbook is password-protected)
+wb.Unprotect("Pa55w0rD");
+```
+
+---
+
+## Worksheet protection
+
+Worksheet protection locks all cells and restricts operations to only those explicitly allowed. Configure it with `IXLWorksheet.Protect()` using the `XLSheetProtectionElements` flag enum.
+
+### `XLSheetProtectionElements` values
+
+| Value | Description |
+|-------|-------------|
+| `None` | No operations allowed. |
+| `AutoFilter` | Allow using autofilters. |
+| `DeleteColumns` | Allow deleting columns. |
+| `DeleteRows` | Allow deleting rows. |
+| `EditObjects` | Allow editing embedded objects. |
+| `EditScenarios` | Allow editing scenarios. |
+| `FormatCells` | Allow formatting cells. |
+| `FormatColumns` | Allow formatting columns (width, hide/show). |
+| `FormatRows` | Allow formatting rows (height, hide/show). |
+| `InsertColumns` | Allow inserting columns. |
+| `InsertHyperlinks` | Allow inserting hyperlinks. |
+| `InsertRows` | Allow inserting rows. |
+| `PivotTables` | Allow using pivot tables. |
+| `SelectLockedCells` | Allow selecting locked cells. |
+| `SelectUnlockedCells` | Allow selecting unlocked cells. |
+| `Sort` | Allow sorting. |
+| Composite: `DeleteEverything` | `DeleteColumns \| DeleteRows` |
+| Composite: `FormatEverything` | `FormatCells \| FormatColumns \| FormatRows` |
+| Composite: `InsertEverything` | `InsertColumns \| InsertHyperlinks \| InsertRows` |
+| Composite: `SelectEverything` | `SelectLockedCells \| SelectUnlockedCells` |
+| Composite: `Everything` | All of the above combined. |
+
+```csharp
+var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+ws.Cell("A1").Value = "Test";
+
+// Protect the sheet: allow deleting rows, selecting all cells, and formatting cells
+ws.Protect(
+    "Pa55w0rD",
+    XLProtectionAlgorithm.Algorithm.SHA512,
+    allowedElements: XLSheetProtectionElements.DeleteRows
+                   | XLSheetProtectionElements.SelectEverything
+                   | XLSheetProtectionElements.FormatCells);
+
+// Revoke delete row permission after the fact
+ws.Protection.DisallowElement(XLSheetProtectionElements.DeleteRows);
+
+Assert.IsTrue(ws.IsProtected);
+Assert.IsTrue(ws.IsPasswordProtected);
+Assert.AreEqual(XLProtectionAlgorithm.Algorithm.SHA512, ws.Protection.Algorithm);
+Assert.IsFalse(ws.Protection.AllowedElements.HasFlag(XLSheetProtectionElements.DeleteRows));
+Assert.IsTrue(ws.Protection.AllowedElements.HasFlag(XLSheetProtectionElements.SelectLockedCells));
+Assert.IsTrue(ws.Protection.AllowedElements.HasFlag(XLSheetProtectionElements.FormatCells));
+
+wb.SaveAs("protect-worksheet.xlsx");
+```
+
+### Modifying allowed elements after protection
+
+Use `AllowElement` and `DisallowElement` on `IXLSheetProtection` (or `IXLWorkbookProtection`) to adjust which elements are allowed without re-protecting from scratch:
+
+```csharp
+// Allow sorting after initial protection
+ws.Protection.AllowElement(XLSheetProtectionElements.Sort);
+
+// Revoke formatting permission
+ws.Protection.DisallowElement(XLSheetProtectionElements.FormatCells);
+```
+
+### Removing worksheet protection
+
+```csharp
+// Supply the password if the worksheet is password-protected
+ws.Unprotect("Pa55w0rD");
+```
+
+---
+
+## Protection interfaces
+
+| Interface | Description |
+|-----------|-------------|
+| `IXLWorkbookProtection` | Exposes `Protect`, `Unprotect`, `IsProtected`, `IsPasswordProtected`, `Algorithm`, and `AllowedElements` for the workbook. |
+| `IXLSheetProtection` | Same surface as `IXLWorkbookProtection` but for a worksheet, using `XLSheetProtectionElements`. |
+| `IXLElementProtection<T>` | Base interface providing `AllowElement`, `DisallowElement`, `AllowEverything`, `AllowNone`, and `CopyFrom`. |
+
+---
+
+## Range-level protection
+
+Excel supports allowing specific ranges to be edited (with or without a password) even when a worksheet is protected. ClosedXML does not yet implement this feature.

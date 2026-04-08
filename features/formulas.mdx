@@ -1,0 +1,212 @@
+---
+title: "Formulas"
+description: "Set, read, and evaluate cell formulas in ClosedXML, including normal formulas, array formulas, data table formulas, and 400+ supported functions."
+---
+
+Cells in a workbook can contain formulas — expressions that calculate a value from other cells, constants, operators, and functions.
+
+## Formula types
+
+Excel supports four formula types:
+
+| Type | Description |
+|------|-------------|
+| **Normal** | A single formula that computes one value for one cell. |
+| **Array** | A single formula applied to a range of cells, calculating all of them at once. |
+| **Data table** | Used for what-if analysis; varies one or two inputs across a range. |
+| **Shared** | A memory optimization where many cells reference the same formula. |
+
+---
+
+## Normal formulas
+
+Set and read normal formulas using the `FormulaA1` or `FormulaR1C1` properties on `IXLCell`.
+
+<Tabs>
+  <Tab title="A1 notation">
+    ```csharp
+    using var wb = new XLWorkbook();
+    var ws = wb.AddWorksheet();
+
+    ws.Cell("A1").Value = 10;
+    ws.Cell("A2").Value = 20;
+
+    // Set a formula using A1 notation
+    ws.Cell("A3").FormulaA1 = "A1 + A2";
+
+    // Read the formula back
+    string formula = ws.Cell("A3").FormulaA1; // "A1 + A2"
+
+    wb.SaveAs("formula-normal.xlsx");
+    ```
+  </Tab>
+  <Tab title="R1C1 notation">
+    ```csharp
+    using var wb = new XLWorkbook();
+    var ws = wb.AddWorksheet();
+
+    ws.Cell("A1").Value = 10;
+    ws.Cell("A2").Value = 20;
+
+    // Set a formula using R1C1 notation
+    ws.Cell("A3").FormulaR1C1 = "R[-2]C + R[-1]C";
+
+    wb.SaveAs("formula-r1c1.xlsx");
+    ```
+  </Tab>
+</Tabs>
+
+### Future functions
+
+Excel defines a set of standard functions (ISO-29500) and a set of newer "future functions" that use a `_xlfn.` prefix in the file format. The prefix is hidden in Excel's UI but must be present in the `.xlsx` file.
+
+From version 0.105 onward, ClosedXML automatically inserts the prefix when you set a formula using a future function name:
+
+```csharp
+// ClosedXML automatically translates future function names (v0.105+)
+ws.Cell(1, 1).FormulaA1 = "CONCAT(A1:A2)";
+// Stored internally as: _xlfn.CONCAT(A1:A2)
+Assert.AreEqual("_xlfn.CONCAT(A1:A2)", ws.Cell(1, 1).FormulaA1);
+```
+
+<Warning>
+  Excel will show `#NAME?` if a future function is saved without the `_xlfn.`
+  prefix. On versions before 0.105, you must write the prefix yourself:
+  `ws.Cell(1,1).FormulaA1 = "_xlfn.CONCAT(A1:A2)";`
+</Warning>
+
+---
+
+## Array formulas
+
+An array formula is set on a range of cells and computes values for all cells at once using a single formula expression.
+
+### Setting an array formula
+
+Select the target range and assign to `IXLRangeBase.FormulaArrayA1`:
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+ws.Cell("A1").Value = "Interest: 2yrs";
+ws.Cell("B1").Value = 1000;
+ws.Cell("C1").Value = 2000;
+ws.Cell("D1").Value = 3000;
+
+ws.Cell("A2").SetValue(0.02)
+    .Style.NumberFormat.SetNumberFormatId((int)XLPredefinedFormat.Number.PercentInteger);
+ws.Cell("A3").SetValue(0.05)
+    .Style.NumberFormat.SetNumberFormatId((int)XLPredefinedFormat.Number.PercentInteger);
+
+// Array formula over B2:D3 — calculates compound interest for each principal/rate pair
+ws.Range("B2:D3").FormulaArrayA1 = "B1:D1*POWER(1+A2:A3, 2)";
+
+wb.SaveAs("array-formula-create.xlsx");
+```
+
+When a cell is part of an array formula:
+
+- `IXLCell.FormulaA1` returns the array formula text (without curly braces).
+- `IXLCell.HasArrayFormula` returns `true`.
+- `IXLCell.FormulaReference` returns the full range covered by the array formula.
+
+<Note>
+  An array formula cannot overlap a merged range, a table, or partially overlap
+  another array formula. Doing so throws `InvalidOperationException`. If the
+  new array formula completely covers an existing one, no exception is thrown.
+</Note>
+
+### Clearing an array formula
+
+To clear an array formula, assign a value to the entire range it covers:
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+ws.Range("A1:C2").FormulaArrayA1 = "SIN(PI()/2)";
+
+// Clear the formula by setting the covered range to blank
+ws.Range(ws.Cell("A1").FormulaReference).Value = Blank.Value;
+
+wb.SaveAs("array-formula-clear.xlsx");
+```
+
+---
+
+## Data table formulas
+
+ClosedXML can read and write data table formulas, but in-memory manipulation of the input range is not supported. Data tables saved by Excel are preserved on load and re-save.
+
+---
+
+## Formula evaluation
+
+ClosedXML does not calculate and save formula cell values by default. When you open the saved file in Excel, Excel recalculates the values.
+
+To save computed values into the file, enable `EvaluateFormulasBeforeSaving`:
+
+```csharp
+var saveOptions = new SaveOptions { EvaluateFormulasBeforeSaving = true };
+wb.SaveAs("formula-with-values.xlsx", saveOptions);
+```
+
+<Note>
+  Saving without evaluated formula values can cause minor display issues in
+  some Excel versions. For example, `IXLStyle.Alignment.WrapText` may not
+  auto-size row height correctly when first opened.
+</Note>
+
+---
+
+## Supported functions
+
+ClosedXML evaluates over 100 Excel functions across all major categories. The table below summarizes which standard and future functions are implemented.
+
+<AccordionGroup>
+  <Accordion title="Date and Time">
+    DATE, DATEDIF, DATEVALUE, DAY, DAYS360, EDATE, EOMONTH, HOUR, MINUTE, MONTH, NETWORKDAYS, NOW, SECOND, TIME, TIMEVALUE, TODAY, WEEKDAY, WEEKNUM, WORKDAY, YEAR, YEARFRAC
+
+    Future: `_xlfn.ISOWEEKNUM`
+  </Accordion>
+
+  <Accordion title="Financial">
+    FV, IPMT, PMT
+  </Accordion>
+
+  <Accordion title="Information">
+    ERROR.TYPE, ISBLANK, ISERR, ISERROR, ISEVEN, ISLOGICAL, ISNA, ISNONTEXT, ISNUMBER, ISODD, ISREF, ISTEXT, N, NA, TYPE
+  </Accordion>
+
+  <Accordion title="Logical">
+    AND, FALSE, IF, IFERROR, NOT, OR, TRUE
+  </Accordion>
+
+  <Accordion title="Lookup and Reference">
+    COLUMN, COLUMNS, HLOOKUP, HYPERLINK, INDEX, MATCH, ROW, ROWS, VLOOKUP
+  </Accordion>
+
+  <Accordion title="Math and Trig">
+    ABS, ACOS, ACOSH, ASIN, ASINH, ATAN, ATAN2, ATANH, CEILING, COMBIN, COS, COSH, DEGREES, EVEN, EXP, FACT, FACTDOUBLE, FLOOR, GCD, INT, LCM, LN, LOG, LOG10, MDETERM, MINVERSE, MMULT, MOD, MROUND, MULTINOMIAL, ODD, PI, POWER, PRODUCT, QUOTIENT, RADIANS, RAND, RANDBETWEEN, ROMAN, ROUND, ROUNDDOWN, ROUNDUP, SERIESSUM, SIGN, SIN, SINH, SQRT, SQRTPI, SUBTOTAL, SUM, SUMIF, SUMIFS, SUMPRODUCT, SUMSQ, TAN, TANH, TRUNC
+
+    Future: ACOT, ACOTH, ARABIC, BASE, CEILING.MATH, COMBINA, COT, COTH, CSC, CSCH, DECIMAL, FLOOR.MATH, SEC, SECH
+  </Accordion>
+
+  <Accordion title="Statistical">
+    AVERAGE, AVERAGEA, COUNT, COUNTA, COUNTBLANK, COUNTIF, COUNTIFS, DEVSQ, FISHER, GEOMEAN, MAX, MAXA, MEDIAN, MIN, MINA, STDEV, STDEVA, STDEVP, STDEVPA, VAR, VARA, VARP, VARPA
+
+    Future: STDEV.S, STDEV.P
+  </Accordion>
+
+  <Accordion title="Text and Data">
+    ASC, CHAR, CLEAN, CODE, CONCATENATE, DOLLAR, EXACT, FIND, FIXED, LEFT, LEN, LOWER, MID, PROPER, REPLACE, REPT, RIGHT, SEARCH, SUBSTITUTE, T, TEXT, TRIM, UPPER, VALUE
+
+    Future: CONCAT, NUMBERVALUE, TEXTJOIN
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Functions not listed above are not yet implemented. Calling an unimplemented
+  function during evaluation will produce an error value. Cube functions and
+  most Engineering and Database functions are not yet supported.
+</Note>

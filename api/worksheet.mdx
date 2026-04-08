@@ -1,0 +1,337 @@
+---
+title: "IXLWorksheet"
+description: "Represents a single sheet within an XLWorkbook. Provides access to cells, rows, columns, ranges, and sheet-level settings."
+---
+
+`IXLWorksheet` extends `IXLRangeBase`, so every method available on a range is also available directly on a worksheet. You obtain a worksheet reference from `XLWorkbook.AddWorksheet` or `XLWorkbook.Worksheet`.
+
+## Getting a worksheet reference
+
+```csharp
+// Add a new worksheet
+IXLWorksheet ws = wb.AddWorksheet("Invoices");
+
+// Access by name (case-insensitive)
+IXLWorksheet ws = wb.Worksheet("Invoices");
+
+// Access by 1-based position
+IXLWorksheet ws = wb.Worksheet(1);
+
+// Safe access without throwing
+if (wb.TryGetWorksheet("Invoices", out var ws))
+{
+    // use ws
+}
+```
+
+## Properties
+
+### Identity and position
+
+| Property | Type | Description |
+|---|---|---|
+| `Name` | `string` | Sheet tab name. Renaming also updates formula references and defined names. |
+| `Position` | `int` | 1-based tab position. Assigning shifts adjacent sheets. |
+| `Workbook` | `XLWorkbook` | The workbook that contains this worksheet. |
+| `Author` | `string` | Author of the sheet. |
+
+### Dimensions
+
+| Property | Type | Description |
+|---|---|---|
+| `ColumnWidth` | `double` | Default column width for this sheet, in number-of-characters units. |
+| `RowHeight` | `double` | Default row height for this sheet, in points. |
+
+### Visibility
+
+| Property | Type | Description |
+|---|---|---|
+| `Visibility` | `XLWorksheetVisibility` | `Visible`, `Hidden`, or `VeryHidden`. |
+| `TabSelected` | `bool` | Whether the sheet tab is selected. |
+| `TabActive` | `bool` | Whether this is the active sheet. |
+| `TabColor` | `XLColor` | Color of the sheet tab. |
+
+### Sheet-level settings
+
+| Property | Type | Description |
+|---|---|---|
+| `PageSetup` | `IXLPageSetup` | Print and page layout options. |
+| `Outline` | `IXLOutline` | Outline (grouping) settings. |
+| `SheetView` | `IXLSheetView` | Zoom, freeze panes, and view state. |
+| `AutoFilter` | `IXLAutoFilter` | Sheet-level auto filter. |
+| `RightToLeft` | `bool` | Display the sheet right-to-left. |
+| `ShowFormulas` | `bool` | Show formulas instead of values. |
+| `ShowGridLines` | `bool` | Display grid lines. |
+| `ShowRowColHeaders` | `bool` | Display row and column headers. |
+| `ShowRuler` | `bool` | Display the ruler. |
+| `ShowWhiteSpace` | `bool` | Display white space in page layout view. |
+| `ShowZeros` | `bool` | Display zero values. |
+| `ShowOutlineSymbols` | `bool` | Display outline symbols. |
+
+### Collections
+
+| Property | Type | Description |
+|---|---|---|
+| `DefinedNames` | `IXLDefinedNames` | Defined names scoped to this worksheet. |
+| `Tables` | `IXLTables` | All Excel tables on this sheet. |
+| `PivotTables` | `IXLPivotTables` | All pivot tables on this sheet. |
+| `MergedRanges` | `IXLRanges` | All merged cell regions. |
+| `ConditionalFormats` | `IXLConditionalFormats` | Conditional formatting rules. |
+| `DataValidations` | `IXLDataValidations` | Data validation rules. |
+| `Hyperlinks` | `IXLHyperlinks` | All hyperlinks on the sheet. |
+| `Pictures` | `IXLPictures` | All pictures embedded on the sheet. |
+| `SparklineGroups` | `IXLSparklineGroups` | Sparkline groups. |
+| `ActiveCell` | `IXLCell?` | The currently active (selected) cell. |
+
+## Sheet visibility
+
+```csharp
+public enum XLWorksheetVisibility
+{
+    Visible,    // Normal, visible tab
+    Hidden,     // Hidden, can be unhidden from the UI
+    VeryHidden  // Hidden, can only be unhidden programmatically
+}
+```
+
+```csharp
+// Hide and unhide
+ws.Hide();
+ws.Unhide();
+
+// Set visibility directly
+ws.Visibility = XLWorksheetVisibility.VeryHidden;
+```
+
+## Cell access
+
+```csharp
+// By address string
+IXLCell cell = ws.Cell("B3");
+
+// By row and column numbers (1-based)
+IXLCell cell = ws.Cell(3, 2);
+
+// By row number and column letter
+IXLCell cell = ws.Cell(3, "B");
+
+// By IXLAddress
+IXLCell cell = ws.Cell(address);
+```
+
+## Range access
+
+```csharp
+// By address string — single cell or multi-cell
+IXLRange range = ws.Range("A1:C5");
+
+// By first and last address strings
+IXLRange range = ws.Range("A1", "C5");
+
+// By corner row/column numbers (1-based)
+IXLRange range = ws.Range(1, 1, 5, 3);
+
+// By two cell references
+IXLRange range = ws.Range(ws.Cell("A1"), ws.Cell("C5"));
+
+// Multiple ranges
+IXLRanges ranges = ws.Ranges("A1:B2,D4:E6");
+
+// Bounding box of all used cells
+IXLRange? used = ws.RangeUsed();
+IXLRange? used = ws.RangeUsed(XLCellsUsedOptions.AllContents);
+```
+
+## Row access
+
+```csharp
+// Single row by number
+IXLRow row = ws.Row(1);
+
+// All rows
+IXLRows rows = ws.Rows();
+
+// Range of rows by number
+IXLRows rows = ws.Rows(1, 10);
+
+// Range of rows by string (e.g. "4:5", "7:8,10:11")
+IXLRows rows = ws.Rows("1:5");
+
+// Boundary rows
+IXLRow first = ws.FirstRow();
+IXLRow last  = ws.LastRow();
+IXLRow? firstUsed = ws.FirstRowUsed();
+IXLRow? lastUsed  = ws.LastRowUsed();
+
+// Used rows with optional filter
+IXLRows usedRows = ws.RowsUsed();
+IXLRows usedRows = ws.RowsUsed(XLCellsUsedOptions.AllContents);
+IXLRows usedRows = ws.RowsUsed(row => row.Cell(1).Value.IsText);
+```
+
+## Column access
+
+```csharp
+// Single column by number or letter
+IXLColumn col = ws.Column(1);
+IXLColumn col = ws.Column("A");
+
+// All columns
+IXLColumns cols = ws.Columns();
+
+// Range of columns by number
+IXLColumns cols = ws.Columns(1, 5);
+
+// Range of columns by letter range or comma-separated
+IXLColumns cols = ws.Columns("A:E");
+IXLColumns cols = ws.Columns("A", "E");
+
+// Boundary columns
+IXLColumn first = ws.FirstColumn();
+IXLColumn last  = ws.LastColumn();
+IXLColumn? firstUsed = ws.FirstColumnUsed();
+IXLColumn? lastUsed  = ws.LastColumnUsed();
+
+// Used columns with optional filter
+IXLColumns usedCols = ws.ColumnsUsed();
+IXLColumns usedCols = ws.ColumnsUsed(XLCellsUsedOptions.AllContents);
+```
+
+## Methods
+
+### Sheet management
+
+```csharp
+void Delete()
+
+IXLWorksheet CopyTo(string newSheetName)
+IXLWorksheet CopyTo(string newSheetName, int position)
+IXLWorksheet CopyTo(XLWorkbook workbook)
+IXLWorksheet CopyTo(XLWorkbook workbook, string newSheetName)
+IXLWorksheet CopyTo(XLWorkbook workbook, string newSheetName, int position)
+```
+
+### Sorting
+
+```csharp
+IXLRange Sort()
+IXLRange Sort(string columnsToSortBy,
+    XLSortOrder sortOrder = XLSortOrder.Ascending,
+    bool matchCase = false,
+    bool ignoreBlanks = true)
+IXLRange Sort(int columnToSortBy,
+    XLSortOrder sortOrder = XLSortOrder.Ascending,
+    bool matchCase = false,
+    bool ignoreBlanks = true)
+IXLRange SortLeftToRight(XLSortOrder sortOrder = XLSortOrder.Ascending,
+    bool matchCase = false,
+    bool ignoreBlanks = true)
+```
+
+### Outlining (grouping)
+
+```csharp
+IXLWorksheet CollapseRows()
+IXLWorksheet CollapseRows(int outlineLevel)
+IXLWorksheet ExpandRows()
+IXLWorksheet ExpandRows(int outlineLevel)
+
+IXLWorksheet CollapseColumns()
+IXLWorksheet CollapseColumns(int outlineLevel)
+IXLWorksheet ExpandColumns()
+IXLWorksheet ExpandColumns(int outlineLevel)
+```
+
+### Formula evaluation
+
+```csharp
+XLCellValue Evaluate(string expression, string? formulaAddress = null)
+void RecalculateAllFormulas()
+```
+
+`formulaAddress` provides context for formulas that use implicit intersection (e.g. `=A:A` evaluated at `B3`).
+
+### Pictures
+
+```csharp
+IXLPicture AddPicture(Stream stream)
+IXLPicture AddPicture(Stream stream, string name)
+IXLPicture AddPicture(Stream stream, XLPictureFormat format)
+IXLPicture AddPicture(Stream stream, XLPictureFormat format, string name)
+IXLPicture AddPicture(string imageFile)
+IXLPicture AddPicture(string imageFile, string name)
+```
+
+### Dimension helpers
+
+```csharp
+int RowCount()
+int ColumnCount()
+```
+
+## Code examples
+
+### Iterate all used rows
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook("data.xlsx");
+var ws = wb.Worksheet("Sheet1");
+
+foreach (var row in ws.RowsUsed())
+{
+    var id   = row.Cell(1).GetValue<int>();
+    var name = row.Cell(2).GetValue<string>();
+    Console.WriteLine($"{id}: {name}");
+}
+```
+
+### Copy a sheet to another workbook
+
+```csharp
+using ClosedXML.Excel;
+
+using var source = new XLWorkbook("source.xlsx");
+using var target = new XLWorkbook();
+
+source.Worksheet("Report").CopyTo(target, "Report");
+target.SaveAs("copy.xlsx");
+```
+
+### Hide and show a sheet
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook("book.xlsx");
+var ws = wb.Worksheet("Internal");
+ws.Visibility = XLWorksheetVisibility.VeryHidden;
+wb.Save();
+```
+
+### Freeze panes and set tab color
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet("Dashboard");
+
+ws.SheetView.FreezeRows(1);          // freeze header row
+ws.TabColor = XLColor.FromHtml("#94cb04");
+wb.SaveAs("dashboard.xlsx");
+```
+
+### Get used range
+
+```csharp
+using ClosedXML.Excel;
+
+using var wb = new XLWorkbook("data.xlsx");
+var ws = wb.Worksheet(1);
+
+var used = ws.RangeUsed();
+if (used is not null)
+    Console.WriteLine($"Data spans {used.Address}");
+```

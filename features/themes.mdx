@@ -1,0 +1,203 @@
+---
+title: "Themes"
+description: "Control workbook color schemes, font schemes, and table themes using IXLTheme and XLTableTheme."
+---
+
+A theme is a collection of design settings — colors, fonts, and effects — that apply a consistent look across a workbook. When you change a theme in Excel, cells and objects that reference theme properties update automatically.
+
+ClosedXML exposes the workbook theme through `IXLWorkbook.Theme`. New workbooks start with the **Office 2007-2010** theme.
+
+## Workbook theme
+
+The `IXLTheme` interface has three parts:
+
+- **Color scheme** — 12 named colors used throughout the workbook
+- **Font scheme** — major (heading) and minor (body) font
+- **Effects** — visual effects for shapes (not implemented in ClosedXML)
+
+<Warning>
+As of version 0.103, only theme colors are loaded and saved. The font scheme and effects saved to the file are always Office 2007-2010, regardless of any changes made at runtime.
+</Warning>
+
+### Modifying theme colors
+
+Access and change individual theme colors through properties on `IXLTheme`:
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Change the Text2 theme color to red
+var red = XLColor.FromHtml("FF0000");
+wb.Theme.Text2 = red;
+
+wb.SaveAs("theme-modified.xlsx");
+```
+
+<Note>
+Excel matches themes by their color values, not by name. If the values in a workbook don't match any predefined Excel theme, no theme is highlighted in the Excel UI.
+</Note>
+
+## Theme color scheme
+
+The color scheme defines 12 symbolic colors. These are available as properties on `IXLTheme` and as values of the `XLThemeColor` enum.
+
+| Property | Enum value | Typical use |
+|---|---|---|
+| `Background1` | `XLThemeColor.Background1` | Main background |
+| `Text1` | `XLThemeColor.Text1` | Main text |
+| `Background2` | `XLThemeColor.Background2` | Secondary background |
+| `Text2` | `XLThemeColor.Text2` | Secondary text |
+| `Accent1` | `XLThemeColor.Accent1` | First accent color |
+| `Accent2` | `XLThemeColor.Accent2` | Second accent color |
+| `Accent3` | `XLThemeColor.Accent3` | Third accent color |
+| `Accent4` | `XLThemeColor.Accent4` | Fourth accent color |
+| `Accent5` | `XLThemeColor.Accent5` | Fifth accent color |
+| `Accent6` | `XLThemeColor.Accent6` | Sixth accent color |
+| `Hyperlink` | `XLThemeColor.Hyperlink` | Hyperlink color |
+| `FollowedHyperlink` | `XLThemeColor.FollowedHyperlink` | Visited hyperlink color |
+
+### Using theme colors in cells
+
+Create a theme color with `XLColor.FromTheme`. The color is stored as a symbolic reference — when the theme changes, the displayed color updates automatically.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+// Fill a cell with the Accent2 theme color
+var accent2 = XLColor.FromTheme(XLThemeColor.Accent2);
+ws.Cell("A1").Style.Fill.BackgroundColor = accent2;
+
+// Apply a tint to a theme color (0.0 = full color, 1.0 = white)
+var accent1Light = XLColor.FromTheme(XLThemeColor.Accent1, 0.5);
+ws.Cell("A2").Style.Fill.BackgroundColor = accent1Light;
+
+// Use theme color for font
+ws.Cell("A3").Style.Font.FontColor = XLColor.FromTheme(XLThemeColor.Text2);
+
+wb.SaveAs("theme-colors.xlsx");
+```
+
+### Resolving the actual RGB value
+
+`XLColor.Color` throws an exception for theme colors because the actual color depends on the workbook. Use `ResolveThemeColor` instead:
+
+```csharp
+using var wb = new XLWorkbook();
+
+// Get the actual XLColor for a theme color slot
+XLColor actual = wb.Theme.ResolveThemeColor(XLThemeColor.Accent1);
+
+// Or read the property directly
+XLColor text1 = wb.Theme.Text1;
+```
+
+### Changing multiple theme colors
+
+```csharp
+using var wb = new XLWorkbook();
+
+wb.Theme.Background1 = XLColor.FromHtml("#FFFFFF");
+wb.Theme.Text1       = XLColor.FromHtml("#000000");
+wb.Theme.Accent1     = XLColor.FromHtml("#4472C4");
+wb.Theme.Accent2     = XLColor.FromHtml("#ED7D31");
+wb.Theme.Accent3     = XLColor.FromHtml("#A9D18E");
+wb.Theme.Accent4     = XLColor.FromHtml("#FFC000");
+wb.Theme.Accent5     = XLColor.FromHtml("#5B9BD5");
+wb.Theme.Accent6     = XLColor.FromHtml("#70AD47");
+
+wb.SaveAs("custom-color-scheme.xlsx");
+```
+
+## Font scheme
+
+The font scheme defines two font slots:
+
+- **Major** (`XLFontScheme.Major`) — heading and title text
+- **Minor** (`XLFontScheme.Minor`) — body and paragraph text
+
+Assign a font scheme to any cell's font. When the user changes the workbook theme, Excel updates these fonts automatically.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+ws.Cell("A1").SetValue("Heading").Style.Font.SetFontScheme(XLFontScheme.Major);
+ws.Cell("A2").SetValue("Body text").Style.Font.SetFontScheme(XLFontScheme.Minor);
+
+// No scheme — uses explicit font name only
+ws.Cell("A3").SetValue("Fixed font")
+    .Style.Font.SetFontName("Consolas")
+    .Font.SetFontScheme(XLFontScheme.None);
+
+wb.SaveAs("font-scheme.xlsx");
+```
+
+<Note>
+Font scheme takes precedence over an explicitly set font name. Even if you set `FontName = "Consolas"` and then `FontScheme = Major`, Excel will display the major theme font (e.g., Cambria in the default theme), not Consolas.
+</Note>
+
+## Table themes
+
+`XLTableTheme` defines the visual style of an Excel table. ClosedXML includes all of Excel's built-in table styles as static fields grouped into three categories:
+
+<AccordionGroup>
+  <Accordion title="Light styles (TableStyleLight1–21)">
+    Light styles use subtle colors and thin borders, suitable for data tables on a white or light background.
+
+    Available: `TableStyleLight1` through `TableStyleLight21`
+  </Accordion>
+  <Accordion title="Medium styles (TableStyleMedium1–28)">
+    Medium styles use more prominent banding and header colors.
+
+    Available: `TableStyleMedium1` through `TableStyleMedium28`
+  </Accordion>
+  <Accordion title="Dark styles (TableStyleDark1–11)">
+    Dark styles use dark header rows and high-contrast banding.
+
+    Available: `TableStyleDark1` through `TableStyleDark11`
+  </Accordion>
+</AccordionGroup>
+
+### Applying a table theme
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+
+ws.Cell("A1").Value = "Name";
+ws.Cell("B1").Value = "Score";
+ws.Cell("A2").Value = "Alice";
+ws.Cell("B2").Value = 95;
+ws.Cell("A3").Value = "Bob";
+ws.Cell("B3").Value = 87;
+
+var table = ws.RangeUsed().CreateTable();
+table.Theme = XLTableTheme.TableStyleMedium9;
+
+wb.SaveAs("table-theme.xlsx");
+```
+
+### Using no table theme
+
+```csharp
+table.Theme = XLTableTheme.None;
+```
+
+### Listing all available themes
+
+```csharp
+foreach (var theme in XLTableTheme.GetAllThemes())
+{
+    Console.WriteLine(theme.Name);
+}
+```
+
+### Looking up a theme by name
+
+```csharp
+var theme = XLTableTheme.FromName("TableStyleMedium2");
+if (theme is not null)
+    table.Theme = theme;
+```

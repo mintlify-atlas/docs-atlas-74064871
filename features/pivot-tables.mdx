@@ -1,0 +1,264 @@
+---
+title: "Pivot tables"
+description: "Create and configure pivot tables backed by a pivot cache, add row/column/value fields, control aggregation, and refresh cached data."
+---
+
+A pivot table summarizes data from a source range and displays the result in a separate, compact table. It is one of Excel's most powerful analysis tools.
+
+## Core concepts
+
+<AccordionGroup>
+  <Accordion title="Pivot cache (IXLPivotCache)">
+    A pivot cache is a snapshot of the source data. It stores every column from the source as a named field. Because it is a cache, changes to the source worksheet are **not reflected automatically** — you must call `IXLPivotCache.Refresh()` to update it.
+
+    One cache can be shared by multiple pivot tables, which avoids duplicating data for different views of the same source.
+
+    Access all caches in a workbook through `XLWorkbook.PivotCaches`.
+  </Accordion>
+  <Accordion title="Pivot table (IXLPivotTable)">
+    A pivot table reads its data from a pivot cache and arranges the cache fields along row and column axes, then places aggregated values in a data area.
+
+    All pivot tables for a worksheet are accessible through `IXLWorksheet.PivotTables`.
+  </Accordion>
+  <Accordion title="Pivot fields (IXLPivotField)">
+    A pivot field represents one column from the cache. When added to the row or column axis it displays distinct values for that field. When added as a value field it displays aggregated results (sum, count, average, etc.).
+  </Accordion>
+  <Accordion title="Value fields (IXLPivotValue)">
+    Value fields populate the data area of the pivot table. Each value field specifies:
+    - which cache field to aggregate (`Values.Add("FieldName")`)
+    - how to aggregate it (`SetSummaryFormula(XLPivotSummary.Sum)`)
+    - how to display it (e.g. as a percentage of another value)
+  </Accordion>
+</AccordionGroup>
+
+## Creating a pivot table
+
+<Steps>
+  <Step title="Prepare source data">
+    Create a range or table whose first row contains unique text headers. Each header becomes a field name in the pivot cache.
+
+    ```csharp
+    using var wb = new XLWorkbook();
+    var ws = wb.AddWorksheet();
+    var range = ws.FirstCell().InsertData(new object[]
+    {
+        ("Event",   "Pastry", "Sold", "Cost"),
+        ("Charity", "Pie",    14,     60),
+        ("Sampling","Cake",   8,      80),
+        ("Charity", "Cake",   7,      75),
+        ("Charity", "Pie",    8,      38),
+    });
+    ```
+  </Step>
+  <Step title="Add the pivot table to a worksheet">
+    Call `IXLWorksheet.PivotTables.Add` with a name, a target cell (top-left anchor), and the source range.
+
+    ```csharp
+    var pivotTable = ws.PivotTables.Add("pvt", ws.Cell(7, 1), range);
+    ```
+
+    A common practice is to place the pivot table on a separate worksheet so it does not overlap the source data.
+  </Step>
+  <Step title="Add row and column label fields">
+    Assign cache fields to the row axis (`RowLabels`) and/or the column axis (`ColumnLabels`). The pivot table will display distinct values from each field along its axis.
+
+    ```csharp
+    pivotTable.RowLabels.Add("Event");
+    pivotTable.ColumnLabels.Add("Pastry");
+    ```
+  </Step>
+  <Step title="Add value fields">
+    Add one or more value fields that define what is aggregated in the data area.
+
+    ```csharp
+    pivotTable.Values.Add("Sold").SetSummaryFormula(XLPivotSummary.Sum);
+    ```
+  </Step>
+  <Step title="Save the workbook">
+    ```csharp
+    pivotTable.SetShowGrandTotalsColumns(false);
+    wb.SaveAs("pastry.xlsx");
+    ```
+  </Step>
+</Steps>
+
+### Complete example: row and column fields
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+var range = ws.FirstCell().InsertData(new object[]
+{
+    ("Event",   "Pastry", "Sold", "Cost"),
+    ("Charity", "Pie",    14,     60),
+    ("Sampling","Cake",   8,      80),
+    ("Charity", "Cake",   7,      75),
+    ("Charity", "Pie",    8,      38),
+});
+
+var pivotTable = ws.PivotTables.Add("pvt", ws.Cell(7, 1), range);
+pivotTable.RowLabels.Add("Event");
+pivotTable.ColumnLabels.Add("Pastry");
+pivotTable.Values.Add("Sold").SetSummaryFormula(XLPivotSummary.Sum);
+pivotTable.SetShowGrandTotalsColumns(false);
+
+wb.SaveAs("pastry.xlsx");
+```
+
+## Labels on one axis only
+
+You do not need fields on both axes. With only row fields, Excel adds a **Σ Values** column automatically.
+
+```csharp
+using var wb = new XLWorkbook();
+var ws = wb.AddWorksheet();
+var range = ws.FirstCell().InsertData(new object[]
+{
+    ("Event",   "Pastry", "Sold", "Cost"),
+    ("Charity", "Pie",    14,     60),
+    ("Sampling","Cake",   8,      80),
+    ("Charity", "Cake",   7,      75),
+    ("Charity", "Pie",    8,      38),
+});
+
+var pivotTable = ws.PivotTables.Add("pvt", ws.Cell(7, 1), range);
+pivotTable.RowLabels.Add("Event");
+pivotTable.RowLabels.Add("Pastry");
+pivotTable.Values.Add("Sold").SetSummaryFormula(XLPivotSummary.Sum);
+pivotTable.Values.Add("Cost").SetSummaryFormula(XLPivotSummary.Sum);
+pivotTable.SetShowGrandTotalsColumns(false);
+
+wb.SaveAs("pastry.xlsx");
+```
+
+## Pivot table from a named table
+
+You can use an `IXLTable` as the source directly.
+
+```csharp
+using var wb = new XLWorkbook();
+var dataSheet = wb.AddWorksheet("PastrySalesData");
+
+var table = dataSheet.Cell(1, 1).InsertTable(pastries, "PastrySalesData", true);
+
+var ptSheet = wb.AddWorksheet("Summary");
+var pt = ptSheet.PivotTables.Add("pvt", ptSheet.Cell(1, 1), table);
+
+pt.RowLabels.Add("Name");
+pt.ColumnLabels.Add("Month");
+pt.Values.Add("NumberOfOrders").SetSummaryFormula(XLPivotSummary.Sum);
+pt.Values.Add("Quality").SetSummaryFormula(XLPivotSummary.Sum);
+
+wb.SaveAs("pastry-from-table.xlsx");
+```
+
+## Report filters
+
+Report filters sit above the pivot table and restrict all data. Add them through `IXLPivotTable.ReportFilters`.
+
+```csharp
+pt.ReportFilters.Add("Name")
+    .AddSelectedValue("Scone")
+    .AddSelectedValue("Doughnut");
+
+pt.ReportFilters.Add("BakeDate")
+    .AddSelectedValue(new DateTime(2017, 05, 03));
+```
+
+## Value field display options
+
+Value fields can show data as a percentage of another value instead of the raw aggregate.
+
+```csharp
+pt.Values.Add("NumberOfOrders", "% of Bearclaw")
+    .ShowAsPercentageFrom("Name").And("Bearclaw")
+    .NumberFormat.Format = "0%";
+```
+
+Available `XLPivotSummary` options: `Sum`, `Count`, `Average`, `Max`, `Min`, `Product`, `CountNumbers`, `StdDev`, `StdDevP`, `Var`, `VarP`.
+
+## Sorting pivot fields
+
+```csharp
+pt.RowLabels.Add("Name").SetSort(XLPivotSortType.Ascending);
+pt.RowLabels.Add("Month").SetSort(XLPivotSortType.Descending);
+```
+
+## Subtotals
+
+Control subtotal display for all fields at once through `IXLPivotTable.Subtotals`.
+
+```csharp
+pt.Subtotals = XLPivotSubtotals.DoNotShow; // hides all subtotals
+// XLPivotSubtotals.AtTop or XLPivotSubtotals.AtBottom to show them
+```
+
+## Grand totals
+
+```csharp
+// Show grand totals for rows (extra row at bottom)
+pt.SetShowGrandTotalsRows(true);
+
+// Show grand totals for columns (extra column on the right)
+pt.SetShowGrandTotalsColumns(true);
+```
+
+<Note>
+The `ShowGrandTotalsColumns` method corresponds to Excel's **On for rows** option — the naming in ClosedXML differs from Excel's UI label.
+</Note>
+
+## Pivot cache
+
+### Refresh
+
+Call `Refresh()` to re-read data from the source range into the cache. All pivot tables that share the cache are updated as well.
+
+```csharp
+// Refresh a specific pivot table's cache
+pivotTable.PivotCache.Refresh();
+
+// Refresh all caches in the workbook
+foreach (var cache in wb.PivotCaches)
+    cache.Refresh();
+```
+
+### Field names
+
+Field names come from the first row of the source range. Duplicate names are made unique by appending a number (e.g. a second `Cost` column becomes `Cost2`). Field names are case-insensitive.
+
+```csharp
+IReadOnlyList<string> names = pivotTable.PivotCache.FieldNames;
+```
+
+### Cache options
+
+| Property | Default | Description |
+|---|---|---|
+| `SaveSourceData` | `true` | Embeds cached values in the file. Larger file but faster to open. |
+| `RefreshDataOnOpen` | `false` | Excel refreshes the cache when opening the workbook. |
+| `ItemsToRetainPerField` | `Automatic` | Controls whether deleted field values remain visible in filters. Use `XLItemsToRetain.None` to remove them on next refresh. |
+
+```csharp
+var cache = pivotTable.PivotCache;
+cache.SaveSourceData = true;
+cache.RefreshDataOnOpen = false;
+cache.ItemsToRetainPerField = XLItemsToRetain.None;
+```
+
+## Accessing existing pivot tables
+
+```csharp
+using var wb = new XLWorkbook("pastry.xlsx");
+
+// All pivot tables in a worksheet
+foreach (IXLPivotTable pt in wb.Worksheet("Summary").PivotTables)
+    Console.WriteLine(pt.Name);
+
+// All pivot caches in the workbook
+foreach (IXLPivotCache cache in wb.PivotCaches)
+    Console.WriteLine(string.Join(", ", cache.FieldNames));
+
+// Get a pivot table's cache
+var myPt = wb.Worksheet("Summary").PivotTables.First();
+IXLPivotCache myCache = myPt.PivotCache;
+```
